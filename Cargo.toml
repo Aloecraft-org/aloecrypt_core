@@ -1,0 +1,37 @@
+[package]
+name = "aloecrypt_core"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Michael Godfrey", "aloecraft.org"]
+readme = "README.md"
+repository = "https://github.com/aloecraft/aloecrypt_core"
+description = """
+"""
+keywords = ["crypto"]
+categories = [ "cryptography", "no-std" ]
+
+[profile.release]
+opt-level = "z"   # Optimizes aggressively for binary size rather than speed.
+lto = true        # Link-time optimization removes dead code across boundaries.
+codegen-units = 1 # Better optimization, slower compile time.
+panic = "abort"   # Removes unwinding code.
+strip = true      # Strips symbols and debug info from the Linux ELF binary.
+
+[dependencies]
+ml-kem = {version="0.3.0-rc.0"}
+ml-dsa = { version="0.1.0-rc.8", default-features = false}
+getrandom = { version = "0.2", default-features = false }
+rand_chacha = { version = "0.10", default-features = false }
+zerocopy = { version = "0.8.48", default-features = false, features = ["derive"]}
+rand_core = { version = "0.10" }
+sha3 = {version = "0.11.0-rc.7", default-features = false}
+digest = {version = "0.11.2", features = ["mac"]}
+chacha20poly1305 = "0.10"
+hmac = "0.13.0"
+
+[package.metadata.cargo-machete]
+ignored = ["zerocopy"]
+
+[build-dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }

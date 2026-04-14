@@ -1,0 +1,7 @@
+.nogit
+.dump
+.generated
+**/__pycache__
+/target
+x.md
+x.patch

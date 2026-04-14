@@ -1,0 +1,565 @@
+{
+    "core_api" : {
+        "sz_consts" : [
+            {"name" : "ENCRYPTED_TAG_SZ",             "value" :   "16"}
+        ]
+    },
+    "dsa_api" : {
+        "enums" : [],
+        "sz_consts" : [
+            {"name":"MLDSA_SEED_SZ", "value":"32" },
+            {"name":"MLDSA_44_PUBKEY_SZ", "value":"1312" },
+            {"name":"MLDSA_65_PUBKEY_SZ", "value":"1952" },
+            {"name":"MLDSA_87_PUBKEY_SZ", "value":"2592" },
+            {"name":"MLDSA_44_SIGNATURE_SZ", "value":"2420" },
+            {"name":"MLDSA_65_SIGNATURE_SZ", "value":"3309" },
+            {"name":"MLDSA_87_SIGNATURE_SZ", "value":"4627" },
+            {"name":"MLDSA_MU_SZ", "value":"64" },
+            {"name":"MLDSA_MU_RAND_SEED_SZ", "value":"32" },
+            {"name":"MLDSA_44_KEYPAIR_SZ", "value":"MLDSA_44_PUBKEY_SZ + MLDSA_SEED_SZ" },
+            {"name":"MLDSA_65_KEYPAIR_SZ", "value":"MLDSA_65_PUBKEY_SZ + MLDSA_SEED_SZ" },
+            {"name":"MLDSA_87_KEYPAIR_SZ", "value":"MLDSA_87_PUBKEY_SZ + MLDSA_SEED_SZ" }
+        ],
+        "byte_aliases" : [
+            {"name":"MlDsa44KeypairRaw", "length":"MLDSA_44_KEYPAIR_SZ"},
+            {"name":"MlDsa65KeypairRaw", "length":"MLDSA_65_KEYPAIR_SZ"},
+            {"name":"MlDsa87KeypairRaw", "length":"MLDSA_87_KEYPAIR_SZ"},
+            {"name":"MlDsaPrivateSeed",  "length":"MLDSA_SEED_SZ"},
+            {"name":"MlDsa44Pubkey",     "length":"MLDSA_44_PUBKEY_SZ"},
+            {"name":"MlDsa65Pubkey",     "length":"MLDSA_65_PUBKEY_SZ"},
+            {"name":"MlDsa87Pubkey",     "length":"MLDSA_87_PUBKEY_SZ"},
+            {"name":"MlDsa44Signature",  "length":"MLDSA_44_SIGNATURE_SZ"},
+            {"name":"MlDsa65Signature",  "length":"MLDSA_65_SIGNATURE_SZ"},
+            {"name":"MlDsa87Signature",  "length":"MLDSA_87_SIGNATURE_SZ"},
+            {"name":"MlDsaMuRandSeed",   "length":"MLDSA_MU_RAND_SEED_SZ"},
+            {"name":"MlDsaMu",           "length":"MLDSA_MU_SZ"}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_MLDSA_SEED", "size": "MLDSA_SEED_SZ"}
+        ],
+        "structs" : [
+            {"name":"MlDsa44Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa44 Keypair",
+                "fields": [ 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name": "public_key", "type" : "MlDsa44Pubkey", "description" : "MlDsa44 Public Verifier Key"} ]},
+            {"name":"MlDsa65Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa65 Keypair",
+                "fields": [ 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name": "public_key", "type" : "MlDsa65Pubkey", "description" : "MlDsa65 Public Verifier Key"} ]},
+            {"name":"MlDsa87Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa87 Keypair",
+                "fields": [ 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name": "public_key", "type" : "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]},
+            {"name":"MlDsa44Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa44 Verifier",
+                "fields": [ 
+                    {"name":"public_key", "type": "MlDsa44Pubkey", "description" : "MlDsa44 Public Verifier Key"} ]},
+            {"name":"MlDsa65Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa65 Verifier",
+                "fields": [ 
+                    {"name":"public_key", "type": "MlDsa65Pubkey", "description" : "MlDsa65 Public Verifier Key"} ]},
+            {"name":"MlDsa87Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "description": "MlDsa87 Verifier",
+                "fields": [ 
+                    {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]}
+        ],
+        "traits" : [
+
+            {"name": "MlDsaKeypair", "functions" : [
+                {"name": "to_bytes",     "return": "&MlDsaPrivateSeed", "instance" : "&self"},
+                {"name": "from_bytes",   "return": "Self", "params": [{"name":"seed_bytes", "type": "&MlDsaPrivateSeed"}]},
+                {"name": "from_seed",    "return": "Self", "params": [{"name":"seed_bytes", "type": "&MlDsaPrivateSeed"}]}
+            ]},
+
+            {"name": "IMlDsa44Pubkey", "functions" : [
+                {"name": "to_bytes",     "return": "&MlDsa44Pubkey", "instance" : "&self", "params": []},
+                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa44Pubkey"}]}
+            ]},
+
+            {"name": "IMlDsa65Pubkey", "functions" : [
+                {"name": "to_bytes",     "return": "&MlDsa65Pubkey", "instance" : "&self", "params": []},
+                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa65Pubkey"}]}
+            ]},
+
+            {"name": "IMlDsa87Pubkey", "functions" : [
+                {"name": "to_bytes",     "return": "&MlDsa87Pubkey", "instance" : "&self", "params": []},
+                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa87Pubkey"}]}
+            ]},
+
+            {"name": "IMlDsa44Keypair", "functions" : [
+                {"name": "sign",   "instance" : "&self",  "return": "MlDsa44Signature", "params": [
+                    {"name":"msg", "type": "&[u8]"}
+                ]},
+                {"name": "get_verifier", "instance" : "&self",  "return": "MlDsa44Verifier"}
+            ]},
+
+            {"name": "IMlDsa65Keypair", "functions" : [
+                {"name": "sign",   "instance" : "&self",  "return": "MlDsa65Signature", "params": [
+                    {"name":"msg", "type": "&[u8]"}
+                ]},
+                {"name": "get_verifier", "instance" : "&self",  "return": "MlDsa65Verifier"}
+            ]},
+
+            {"name": "IMlDsa87Keypair", "functions" : [
+                {"name": "sign",   "instance" : "&self",  "return": "MlDsa87Signature", "params": [
+                    {"name":"msg", "type": "&[u8]"}
+                ]},
+                {"name": "get_verifier", "instance" : "&self",  "return": "MlDsa87Verifier"}
+            ]},
+
+            {"name": "IMlDsa44Verifier", "functions" : [
+                {"name": "verify",   "instance" : "&self",  "return": "bool", "params": [
+                    {"name":"msg", "type": "&[u8]"}, 
+                    {"name":"signature", "type":"&MlDsa44Signature"}
+                ]}
+            ],"unimplemented_functions" : [
+                "// fn verify_internal(&self, msg: &[u8], signature: &MlDsa44Signature) -> bool;",
+                "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa44Signature) -> bool;",
+                "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa44Signature) -> bool;"
+            ]
+        },
+
+            {"name": "IMlDsa65Verifier", "functions" : [
+                {"name": "verify",   "instance" : "&self",  "return": "bool", "params": [
+                    {"name":"msg", "type": "&[u8]"}, 
+                    {"name":"signature", "type":"&MlDsa65Signature"}
+                ],"unimplemented_functions" : [
+                    "// fn verify_internal(&self, msg: &[u8], signature: &MlDsa44Signature) -> bool;",
+                    "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa44Signature) -> bool;",
+                    "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa44Signature) -> bool;"
+                ]}
+            ]},
+
+            {"name": "IMlDsa87Verifier", "functions" : [
+                {"name": "verify",   "instance" : "&self",  "return": "bool", "params": [
+                    {"name":"msg", "type": "&[u8]"}, 
+                    {"name":"signature", "type":"&MlDsa87Signature"}
+                ],"unimplemented_functions" : [
+                    "// fn verify_internal(&self, msg: &[u8], signature: &MlDsa87Signature) -> bool;",
+                    "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa87Signature) -> bool;",
+                    "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa87Signature) -> bool;"
+                ]}
+            ]}
+
+        ],
+        "functions" : [], 
+        "impls":[
+            {"trait":"MlDsaKeypair", "struct":"MlDsa44Keypair"},
+            {"trait":"MlDsaKeypair", "struct":"MlDsa65Keypair"},
+            {"trait":"MlDsaKeypair", "struct":"MlDsa87Keypair"},
+            {"trait":"IMlDsa44Keypair", "struct":"MlDsa44Keypair"},
+            {"trait":"IMlDsa65Keypair", "struct":"MlDsa65Keypair"},
+            {"trait":"IMlDsa87Keypair", "struct":"MlDsa87Keypair"},
+            {"trait":"IMlDsa44Pubkey", "struct":"MlDsa44Verifier"},
+            {"trait":"IMlDsa44Verifier", "struct":"MlDsa44Keypair"},
+            {"trait":"IMlDsa65Pubkey", "struct":"MlDsa65Verifier"},
+            {"trait":"IMlDsa65Verifier", "struct":"MlDsa65Verifier"},
+            {"trait":"IMlDsa65Verifier", "struct":"MlDsa65Keypair"},
+            {"trait":"IMlDsa87Pubkey", "struct":"MlDsa87Verifier"},
+            {"trait":"IMlDsa87Verifier", "struct":"MlDsa87Keypair"}
+        ]
+    },
+    "hash_api" : { 
+        "sz_consts" : [
+            {"name":"HASH_KEY_256_SZ", "value" : "32"}
+        ],
+        "byte_aliases" : [
+            {"name":"HashKey256",   "length": "HASH_KEY_256_SZ" }
+        ],
+        "functions" : [
+            {
+                "name":"hash",        
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"salt", "type": "&[u8]"}, 
+                    {"name":"ikm", "type": "&[u8]"}, 
+                    {"name":"domain_info", "type": "&str"}
+                ] 
+            },
+            {
+                "name":"hmac",        
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"salt", "type": "&[u8]"}, 
+                    {"name":"ikm", "type": "&[u8]"}, 
+                    {"name":"domain_info", "type": "&str"}
+                ] 
+            },
+            {
+                "name":"salted_hmac", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"salt", "type": "&[u8]"}, 
+                    {"name":"ikm", "type": "&[u8]"}
+                ] 
+            },
+            {
+                "name":"domain_hmac", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"ikm",  "type": "&[u8]"}, 
+                    {"name":"domain_info", "type":"&str"}
+                ] 
+            },
+            {
+                "name":"salted_hash", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"salt", "type": "&[u8]"}, 
+                    {"name":"ikm", "type": "&[u8]"}
+                ]
+            },
+            {
+                "name":"domain_hash", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"ikm",  "type": "&[u8]"}, 
+                    {"name":"domain_info", "type":" &str"}
+                ] 
+            },
+            {
+                "name":"simple_hmac", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"ikm",  "type": "&[u8]"}
+                ] 
+            },
+            {
+                "name":"simple_hash", 
+                "return" :"HashKey256", 
+                "params" : [
+                    {"name":"ikm",  "type": "&[u8]"}
+                ] 
+            }
+        ]
+    },
+    "kem_api" : { 
+        "sz_consts" : [
+            {"name":"MLKEM_PRK_SEED_SZ", "value" : "32"},
+            {"name":"MLKEM_SECRET_SZ", "value":"32"},
+            {"name":"MLKEM_512_CIPHER_SZ", "value":"768"},
+            {"name":"MLKEM_768_CIPHER_SZ", "value":"1088"},
+            {"name":"MLKEM_1024_CIPHER_SZ", "value":"1568"},
+            {"name":"MLKEM_512_ENCAP_KEY_SZ", "value":"800"},
+            {"name":"MLKEM_768_ENCAP_KEY_SZ", "value":"1184"},
+            {"name":"MLKEM_1024_ENCAP_KEY_SZ", "value":"1568"},
+            {"name":"MLKEM_DECAP_KEY_SZ", "value":"64"}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_KEM_PRK_SEED",   "size": "MLKEM_PRK_SEED_SZ"},
+            {"name": "EMPTY_KEM_DECAP_SEED", "size": "MLKEM_DECAP_KEY_SZ"}
+        ],
+        "byte_aliases" : [
+            {"name":"MlKemPrkSeed",   "length": "MLKEM_PRK_SEED_SZ" },
+            {"name":"MlKem512Pubkey", "length": "MLKEM_512_ENCAP_KEY_SZ"},
+            {"name":"MlKem768Pubkey", "length": "MLKEM_768_ENCAP_KEY_SZ"},
+            {"name":"MlKem1024Pubkey", "length": "MLKEM_1024_ENCAP_KEY_SZ"},
+            {"name":"MlKemPrivateSeed", "length": "MLKEM_DECAP_KEY_SZ"},
+            {"name":"MlKemSecret", "length": "MLKEM_SECRET_SZ"},
+            {"name":"MlKem512Cipher", "length": "MLKEM_512_CIPHER_SZ"},
+            {"name":"MlKem768Cipher", "length": "MLKEM_768_CIPHER_SZ"},
+            {"name":"MlKem1024Cipher", "length": "MLKEM_1024_CIPHER_SZ"}
+        ],
+        "structs" : [
+            {
+                "name":"MlKem512Keypair", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem512Pubkey"}
+                ]
+            },
+            {
+                "name":"MlKem768Keypair", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem768Pubkey"}
+                ]
+            },
+            {
+                "name":"MlKem1024Keypair", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem1024Pubkey"}
+                ]
+            },
+            {
+                "name":"MlKem512EncapsulatorResult", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem512Cipher"}
+                ]
+            },
+            {
+                "name":"MlKem768EncapsulatorResult", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem768Cipher"}
+                ]
+            },
+            {
+                "name":"MlKem1024EncapsulatorResult", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem1024Cipher"}
+                ]
+            },
+            {
+                "name":"MlKem512Encapsulator", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"public_key", "type":"MlKem512Pubkey"}
+                ]
+            },
+            {
+                "name":"MlKem768Encapsulator", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"public_key", "type":"MlKem768Pubkey"}
+                ]
+            },
+            {
+                "name":"MlKem1024Encapsulator", 
+                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" :  [
+                    {"name":"public_key", "type":"MlKem1024Pubkey"}
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name":"IMlKem512Keypair",
+                "generics": [],
+                "functions": [
+                    {"name" : "decapsulate",     "instance" : "&self", "return": "MlKemSecret", "params" : [ {"name": "encapsulated_key", "type":"&MlKem512Cipher"} ] },
+                    {"name" : "get_encapsulator","instance" : "&self", "return": "MlKem512Encapsulator", "params" : [] }
+                ]
+            },
+            {
+                "name":"IMlKem768Keypair",
+                "generics": [],
+                "functions": [
+                    {"name" : "decapsulate",     "instance" : "&self", "return": "MlKemSecret", "params" : [ {"name": "encapsulated_key", "type":"&MlKem768Cipher"} ] },
+                    {"name" : "get_encapsulator","instance" : "&self", "return": "MlKem768Encapsulator", "params" : [] }
+                ]
+            },
+            {
+                "name":"IMlKem1024Keypair",
+                "generics": [],
+                "functions": [
+                    {"name" : "decapsulate",     "instance" : "&self", "return": "MlKemSecret", "params" : [ {"name": "encapsulated_key", "type":"&MlKem1024Cipher"} ] },
+                    {"name" : "get_encapsulator","instance" : "&self", "return": "MlKem1024Encapsulator", "params" : [] }
+                ]
+            },
+            {
+                "name":"IMlKem512Encapsulator",
+                "generics": [],
+                "functions": [
+                    {"name" : "encapsulate",     "instance" : "&self", "return": "MlKem512EncapsulatorResult", "params" : [ {"name": "prk", "type":"MlKemPrkSeed"} ] }
+                ]
+            },
+            {
+                "name":"IMlKem768Encapsulator",
+                "generics": [],
+                "functions": [
+                    {"name" : "encapsulate",     "instance" : "&self", "return": "MlKem768EncapsulatorResult", "params" : [ {"name": "prk", "type":"MlKemPrkSeed"} ] }
+                ]
+            },
+            {
+                "name":"IMlKem1024Encapsulator",
+                "generics": [],
+                "functions": [
+                    {"name" : "encapsulate",     "instance" : "&self", "return": "MlKem1024EncapsulatorResult", "params" : [ {"name": "prk", "type":"MlKemPrkSeed"} ] }
+                ]
+            },
+            {
+                "name":"MlKemKeypair",
+                "generics": [],
+                "functions": [
+                    {"name" : "to_bytes",   "instance" : "&self", "return": "&MlKemPrivateSeed", "params" : [] },
+                    {"name" : "from_bytes", "return": "Self", "params" : [ {"name": "seed_bytes", "type":"&MlKemPrivateSeed"} ] },
+                    {"name" : "from_seed",  "return": "Self", "params" : [ {"name": "seed_bytes", "type":"&MlKemPrivateSeed"} ] }
+                ]
+            }
+        ],
+        "impls": [
+            {"trait":"MlKemKeypair", "struct":"MlKem512Keypair"},
+            {"trait":"MlKemKeypair", "struct":"MlKem768Keypair"},
+            {"trait":"MlKemKeypair", "struct":"MlKem1024Keypair"},
+            {"trait":"IMlKem512Keypair", "struct":"MlKem512Keypair"},
+            {"trait":"IMlKem768Keypair", "struct":"MlKem768Keypair"},
+            {"trait":"IMlKem1024Keypair", "struct":"MlKem1024Keypair"},
+            {"trait":"IMlKem512Encapsulator", "struct":"MlKem512Encapsulator"},
+            {"trait":"IMlKem768Encapsulator", "struct":"MlKem768Encapsulator"},
+            {"trait":"IMlKem1024Encapsulator", "struct":"MlKem1024Encapsulator"}
+        ]
+    },
+    "password_api" : {
+        "sz_consts" : [
+            {"name":"PASSWORD_CIPHER_CHUNK_SZ", "value":"512" },
+            {"name":"PASSWORD_NONCE_SZ", "value":"12" }
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_PBKDF_KEY",                 "size": "PBKDF_KEY_SZ"},
+            {"name": "EMPTY_PASSWORD_NONCE",            "size": "PASSWORD_NONCE_SZ"}
+
+        ],
+        "structs":[
+            {
+                "name": "PasswordCipher", 
+                "derives":"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            "fields" : [
+                {"name":"key", "type": "PbkdfKey"},
+                {"name":"nonce", "type": "PasswordNonce"},
+                {"name":"counter", "type": "u32"},
+                {"name":"n_bytes", "type": "u64"},
+                {"name":"chunk_sz", "type": "u64"}
+            ]},
+            {
+                "name": "EncryptChunkResult", 
+                "derives":"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" : [
+                {"name":"cipher", "type": "PasswordCipher"},
+                {"name":"next_chunk", "type": "PasswordEncryptedChunk"},
+                {"name":"is_done", "type": "u8"}
+            ]},
+            {
+                "name": "DecryptChunkResult", 
+                "derives":"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            "fields" : [
+                {"name":"cipher", "type":"PasswordCipher"},
+                {"name":"next_chunk", "type":"PasswordUnencryptedChunk"},
+                {"name":"n_bytes", "type":"u16"},
+                {"name":"is_done", "type":"u8"}
+            ]}
+        ],
+        "traits" : [
+            {
+                "name":"IPasswordCipher",
+                "generics": [],
+                "functions": [
+                    {
+                        "name" : "new", 
+                        "return": "Self", 
+                        "params" : [ 
+                            {"name": "data", "type" : "&[u8]"},
+                            {"name": "key", "type" : "PbkdfKey"},
+                            {"name": "nonce", "type" : "PasswordNonce"}
+                        ] 
+                    }
+                ]
+            }
+        ],
+        "byte_aliases" : [
+            {"name": "PasswordEncryptedChunk", "length":"PASSWORD_CIPHER_CHUNK_SZ + ENCRYPTED_TAG_SZ"},
+            {"name": "PasswordUnencryptedChunk", "length":"PASSWORD_CIPHER_CHUNK_SZ"},
+            { "name" : "PasswordNonce",               "length": "PASSWORD_NONCE_SZ"}
+        ],
+        "impls":[
+            {"trait":"IPasswordCipher", "struct":"PasswordCipher"}
+        ]
+    },
+    "pkdf_api" : {
+        "sz_consts" : [
+            {"name" : "PBKDF_KEY_SZ",                 "value" :   "32"}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_PBKDF_KEY",                 "size": "PBKDF_KEY_SZ"}
+        ],
+        "byte_aliases" : [
+            { "name" : "PbkdfKey",                     "length": "PBKDF_KEY_SZ"}
+        ],
+        "functions" : [
+            {
+                "name":"pbkdf",            
+                "return":"PbkdfKey",  
+                "params": [
+                    {"name":"password", "type": "&[u8]"}, 
+                    {"name":"salt", "type": "&[u8]"}, 
+                    {"name":"iters", "type":"u32"}
+                ]
+            },
+            {
+                "name":"salted_pbkdf",     
+                "return":"PbkdfKey",  
+                "params": [
+                    {"name":"password", "type": "&[u8]"}, {"name":"salt", "type": "&[u8]"}    
+                ]
+            },
+            {
+                "name":"pbkdf_with_iters", 
+                "return":"PbkdfKey",  
+                "params": [
+                    {"name":"password", "type": "&[u8]"}, {"name":"iters", "type": "u32"}     
+                ]
+            },
+            {
+                "name":"simple_pbkdf",     
+                "return":"PbkdfKey",  
+                "params": [
+                    {"name":"password", "type": "&[u8]"}
+                ]
+            }
+        ]
+     },
+    "rng_api" : { 
+        "enums" : [],
+        "sz_consts" : [
+            { "name" : "RNG_SEED_SZ",  "value" :   "32" }
+        ],
+        "empty_consts" : [
+            { "name": "EMPTY_RNG_SEED", "size":"RNG_SEED_SZ"}
+        ],
+        "byte_aliases" : [
+            { "name": "RngSeed", "length":"RNG_SEED_SZ"}
+        ],
+        "structs" : [
+            {
+                "name": "AloeRng",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "fields" : [
+                    {"name" : "seed",     "type" :"RngSeed"},
+                    {"name" : "stream",   "type" :"u64"},
+                    {"name" : "word_pos", "type" :"u128"}
+                ]
+            },
+            { 
+                "name": "AloeRngU8Result", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" : [ {"name" : "_self",  "type" :"AloeRng"}, {"name" : "next",   "type" :"u8" } ]
+            },
+            { 
+                "name": "AloeRngU32Result", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" : [ {"name" : "_self",  "type" :"AloeRng"}, {"name" : "next",   "type" :"u32" } ]
+            },
+            { 
+                "name": "AloeRngU64Result", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" : [ {"name" : "_self",  "type" :"AloeRng"}, {"name" : "next",   "type" :"u64" } ]
+            },
+            { 
+                "name": "AloeRngU128Result", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields" : [ {"name" : "_self",  "type" :"AloeRng"}, {"name" : "next",   "type" :"u128" } ]
+            }
+        ],
+        "traits" : [
+            {
+                "name":"IAloeRng",
+                "generics": [],
+                "functions": [
+                    {"name" : "with_seed",     "instance" : "&mut self", "return": "&Self", "params" : [ {"name": "seed", "type":"RngSeed"} ] },
+                    {"name" : "with_stream",   "instance" : "&mut self", "return": "&Self", "params" : [ {"name": "stream", "type":"u64"} ] },
+                    {"name" : "with_word_pos", "instance" : "&mut self", "return": "&Self", "params" : [ {"name": "word_pos", "type":"u128"} ] },
+                    {"name" : "new", "return": "Self", "params" : [ {"name": "seed", "type":"RngSeed"} ]}
+                ]
+            }
+        ],
+        "impls" : [
+            {"trait":"IAloeRng", "struct":"AloeRng"}
+        ]
+    }
+}
