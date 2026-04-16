@@ -57,13 +57,13 @@ impl MlKem1024Encapsulator {
 }
 
 impl MlKemKeypair for MlKem512Keypair {
-    fn to_bytes(&self) -> &MlKemPrivateSeed {
+    fn pack_bytes(&self) -> &MlKemPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlKemPrivateSeed) -> Self {
-        MlKem512Keypair::from_bytes(seed_bytes)
+        MlKem512Keypair::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
+    fn unpack_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
         let (de, en) = MlKem512::from_seed(seed_bytes.into());
         Self {
             private_seed: de.to_bytes().into(),
@@ -72,13 +72,13 @@ impl MlKemKeypair for MlKem512Keypair {
     }
 }
 impl MlKemKeypair for MlKem768Keypair {
-    fn to_bytes(&self) -> &MlKemPrivateSeed {
+    fn pack_bytes(&self) -> &MlKemPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlKemPrivateSeed) -> Self {
-        MlKem768Keypair::from_bytes(seed_bytes)
+        MlKem768Keypair::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
+    fn unpack_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
         let (de, en) = MlKem768::from_seed(seed_bytes.into());
         Self {
             private_seed: de.to_bytes().into(),
@@ -87,13 +87,13 @@ impl MlKemKeypair for MlKem768Keypair {
     }
 }
 impl MlKemKeypair for MlKem1024Keypair {
-    fn to_bytes(&self) -> &MlKemPrivateSeed {
+    fn pack_bytes(&self) -> &MlKemPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlKemPrivateSeed) -> Self {
-        MlKem1024Keypair::from_bytes(seed_bytes)
+        MlKem1024Keypair::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
+    fn unpack_bytes(seed_bytes: &MlKemPrivateSeed) -> Self {
         let (de, en) = MlKem1024::from_seed(seed_bytes.into());
         Self {
             private_seed: de.to_bytes().into(),

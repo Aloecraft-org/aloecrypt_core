@@ -5,7 +5,7 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Michael Godfrey", "aloecraft.org"]
 readme = "README.md"
-repository = "https://github.com/aloecraft/aloecrypt_core"
+repository = "https://github.com/Aloecraft-org/aloecrypt_core"
 description = """
 """
 keywords = ["crypto"]
@@ -21,7 +21,7 @@ strip = true      # Strips symbols and debug info from the Linux ELF binary.
 [dependencies]
 ml-kem = {version="0.3.0-rc.0"}
 ml-dsa = { version="0.1.0-rc.8", default-features = false}
-getrandom = { version = "0.2", default-features = false }
+getrandom = { version = "0.2.17", default-features = false }
 rand_chacha = { version = "0.10", default-features = false }
 zerocopy = { version = "0.8.48", default-features = false, features = ["derive"]}
 rand_core = { version = "0.10" }

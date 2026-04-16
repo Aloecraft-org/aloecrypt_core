@@ -2,28 +2,19 @@
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![allow(warnings)]
 
-use aloecrypt_core::dsa::*;
-use aloecrypt_core::dsa_api::*;
-use aloecrypt_core::hash::*;
-use aloecrypt_core::kem::*;
-use aloecrypt_core::kem_api::*;
-use aloecrypt_core::password::*;
-use aloecrypt_core::password_api::*;
-use aloecrypt_core::rng::*;
-use aloecrypt_core::rng_api::*;
 
-use ml_dsa::{
-    ExpandedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey, VerifyingKey,
-    signature::{Keypair, Signer, Verifier},
-};
-
-use ml_kem::{
-    B32, Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey, ExpandedKeyEncoding,
-    KeyExport, MlKem512, MlKem768, MlKem1024, SharedKey, array::Array,
-};
-
-use rand_core::{Rng, RngCore};
-
+// use ml_dsa::{
+    //     ExpandedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey, VerifyingKey,
+    //     signature::{Keypair, Signer, Verifier},
+    // };
+    
+    // use ml_kem::{
+        //     B32, Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey, ExpandedKeyEncoding,
+        //     KeyExport, MlKem512, MlKem768, MlKem1024, SharedKey, array::Array,
+        // };
+        
+        use rand_core::{Rng, RngCore};
+        
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed);
@@ -36,13 +27,25 @@ use sha3::{Keccak256, Sha3_256};
 type HmacShake256 = Hmac<Keccak256>;
 type HmacSha3_256 = Hmac<Sha3_256>;
 
+use aloecrypt_core::dsa::*;
+use aloecrypt_core::dsa_api::*;
+use aloecrypt_core::hash::*;
+use aloecrypt_core::kem::*;
+use aloecrypt_core::kem_api::*;
+use aloecrypt_core::password::*;
+use aloecrypt_core::recovery;
+use aloecrypt_core::recovery_api::*;
+use aloecrypt_core::password_api::*;
+use aloecrypt_core::rng::*;
+use aloecrypt_core::rng_api::*;
+
 fn main() {
     println!("align.rs - starting.");
     let mut rng = _make_rng();
     let mut sign_seed = EMPTY_MLDSA_SEED;
     let mut kem_seed_1 = EMPTY_KEM_DECAP_SEED;
     let mut kem_seed_2 = EMPTY_KEM_DECAP_SEED;
-
+    
     let mut aloe_rng = AloeRng::from_rng(&mut rng);
     let mut kem_512_prk = EMPTY_KEM_PRK_SEED;
     let mut kem_768_prk = EMPTY_KEM_PRK_SEED;
@@ -114,9 +117,9 @@ fn main() {
     assert!(dsa_65_verifier_result2);
     assert!(dsa_87_verifier_result2);
 
-    let dsa_44_pubkey_bytes = dsa_44_verifier.to_bytes();
-    let dsa_65_pubkey_bytes = dsa_65_verifier.to_bytes();
-    let dsa_87_pubkey_bytes = dsa_87_verifier.to_bytes();
+    let dsa_44_pubkey_bytes = dsa_44_verifier.pack_bytes();
+    let dsa_65_pubkey_bytes = dsa_65_verifier.pack_bytes();
+    let dsa_87_pubkey_bytes = dsa_87_verifier.pack_bytes();
 
     let pbkdf_password = "some_password";
     let pbkdf_salt = "some_salt";
@@ -196,9 +199,9 @@ fn main() {
             ..MLDSA_44_PUBKEY_SZ + MLDSA_65_PUBKEY_SZ + MLDSA_87_PUBKEY_SZ],
     );
 
-    let decrypted_mldsa44_verifier = MlDsa44Verifier::from_bytes(&decrypted_mldsa44_pubkey_bytes);
-    let decrypted_mldsa65_verifier = MlDsa65Verifier::from_bytes(&decrypted_mldsa65_pubkey_bytes);
-    let decrypted_mldsa87_verifier = MlDsa87Verifier::from_bytes(&decrypted_mldsa87_pubkey_bytes);
+    let decrypted_mldsa44_verifier = MlDsa44Verifier::unpack_bytes(&decrypted_mldsa44_pubkey_bytes);
+    let decrypted_mldsa65_verifier = MlDsa65Verifier::unpack_bytes(&decrypted_mldsa65_pubkey_bytes);
+    let decrypted_mldsa87_verifier = MlDsa87Verifier::unpack_bytes(&decrypted_mldsa87_pubkey_bytes);
 
     let decrypted_dsa_44_verifier_result =
         decrypted_mldsa44_verifier.verify(&message.as_bytes(), &dsa_44_signature);
@@ -210,6 +213,33 @@ fn main() {
     assert!(decrypted_dsa_44_verifier_result);
     assert!(decrypted_dsa_65_verifier_result);
     assert!(decrypted_dsa_87_verifier_result);
+
+    // SECRET RECOVERY
+
+    let mut authorizer_private_seed = EMPTY_KEM_DECAP_SEED;
+    let mut prk_seed = EMPTY_KEM_PRK_SEED;
+    let mut recovery_secret = EMPTY_RECOVERY_PRIVKEY;
+    rng.fill_bytes(&mut authorizer_private_seed);
+    rng.fill_bytes(&mut recovery_secret);
+    rng.fill_bytes(&mut prk_seed);
+
+    // Secret holder takes authorizer keypair
+    let authorizer_keypair = MlKem512Keypair::from_seed(&authorizer_private_seed);
+    let recoverable_secret = RecoverableSecret::create(authorizer_keypair.get_encapsulator(), recovery_secret, prk_seed);
+
+    // Recovery key holder keeps this
+    let recovery_key = recoverable_secret.recovery_key;
+
+    // Authorizer authorizes with recovery public key
+    let recovered_authorization = authorizer_keypair.decapsulate(&recovery_key.cipher);
+
+    // Recoverer combines private key to recover secret
+    let recovered_secret = RecoverableSecret::recover(recovered_authorization, &recovery_key.secret);
+    
+    assert_eq!(recoverable_secret.secret, recovered_secret);
+
+    println!("   inner_secret: {:02x}{:02x}{:02x}{:02x}", recoverable_secret.secret[0], recoverable_secret.secret[1], recoverable_secret.secret[2], recoverable_secret.secret[3]);
+    println!("   recovered_secret: {:02x}{:02x}{:02x}{:02x}", recovered_secret[0], recovered_secret[1], recovered_secret[2], recovered_secret[3]);
 
     println!("align.rs - done.");
 }

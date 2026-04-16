@@ -38,30 +38,30 @@
             {"name": "EMPTY_MLDSA_SEED", "size": "MLDSA_SEED_SZ"}
         ],
         "structs" : [
-            {"name":"MlDsa44Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa44Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa44 Keypair",
                 "fields": [ 
                     {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
                     {"name": "public_key", "type" : "MlDsa44Pubkey", "description" : "MlDsa44 Public Verifier Key"} ]},
-            {"name":"MlDsa65Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa65Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa65 Keypair",
                 "fields": [ 
                     {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
                     {"name": "public_key", "type" : "MlDsa65Pubkey", "description" : "MlDsa65 Public Verifier Key"} ]},
-            {"name":"MlDsa87Keypair", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa87Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa87 Keypair",
                 "fields": [ 
                     {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
                     {"name": "public_key", "type" : "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]},
-            {"name":"MlDsa44Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa44Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa44 Verifier",
                 "fields": [ 
                     {"name":"public_key", "type": "MlDsa44Pubkey", "description" : "MlDsa44 Public Verifier Key"} ]},
-            {"name":"MlDsa65Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa65Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa65 Verifier",
                 "fields": [ 
                     {"name":"public_key", "type": "MlDsa65Pubkey", "description" : "MlDsa65 Public Verifier Key"} ]},
-            {"name":"MlDsa87Verifier", "derives" : "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+            {"name":"MlDsa87Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa87 Verifier",
                 "fields": [ 
                     {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]}
@@ -69,24 +69,24 @@
         "traits" : [
 
             {"name": "MlDsaKeypair", "functions" : [
-                {"name": "to_bytes",     "return": "&MlDsaPrivateSeed", "instance" : "&self"},
-                {"name": "from_bytes",   "return": "Self", "params": [{"name":"seed_bytes", "type": "&MlDsaPrivateSeed"}]},
+                {"name": "pack_bytes",     "return": "&MlDsaPrivateSeed", "instance" : "&self"},
+                {"name": "unpack_bytes",   "return": "Self", "params": [{"name":"seed_bytes", "type": "&MlDsaPrivateSeed"}]},
                 {"name": "from_seed",    "return": "Self", "params": [{"name":"seed_bytes", "type": "&MlDsaPrivateSeed"}]}
             ]},
 
             {"name": "IMlDsa44Pubkey", "functions" : [
-                {"name": "to_bytes",     "return": "&MlDsa44Pubkey", "instance" : "&self", "params": []},
-                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa44Pubkey"}]}
+                {"name": "pack_bytes",     "return": "&MlDsa44Pubkey", "instance" : "&self", "params": []},
+                {"name": "unpack_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa44Pubkey"}]}
             ]},
 
             {"name": "IMlDsa65Pubkey", "functions" : [
-                {"name": "to_bytes",     "return": "&MlDsa65Pubkey", "instance" : "&self", "params": []},
-                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa65Pubkey"}]}
+                {"name": "pack_bytes",     "return": "&MlDsa65Pubkey", "instance" : "&self", "params": []},
+                {"name": "unpack_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa65Pubkey"}]}
             ]},
 
             {"name": "IMlDsa87Pubkey", "functions" : [
-                {"name": "to_bytes",     "return": "&MlDsa87Pubkey", "instance" : "&self", "params": []},
-                {"name": "from_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa87Pubkey"}]}
+                {"name": "pack_bytes",     "return": "&MlDsa87Pubkey", "instance" : "&self", "params": []},
+                {"name": "unpack_bytes",   "return": "Self", "params": [{"name":"bytes", "type": "&MlDsa87Pubkey"}]}
             ]},
 
             {"name": "IMlDsa44Keypair", "functions" : [
@@ -266,63 +266,63 @@
         "structs" : [
             {
                 "name":"MlKem512Keypair", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem512Pubkey"}
                 ]
             },
             {
                 "name":"MlKem768Keypair", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem768Pubkey"}
                 ]
             },
             {
                 "name":"MlKem1024Keypair", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"private_seed", "type":"MlKemPrivateSeed"}, {"name":"public_key", "type": "MlKem1024Pubkey"}
                 ]
             },
             {
                 "name":"MlKem512EncapsulatorResult", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem512Cipher"}
                 ]
             },
             {
                 "name":"MlKem768EncapsulatorResult", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem768Cipher"}
                 ]
             },
             {
                 "name":"MlKem1024EncapsulatorResult", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"secret", "type":"MlKemSecret"}, {"name":"cipher", "type": "MlKem1024Cipher"}
                 ]
             },
             {
                 "name":"MlKem512Encapsulator", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"public_key", "type":"MlKem512Pubkey"}
                 ]
             },
             {
                 "name":"MlKem768Encapsulator", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"public_key", "type":"MlKem768Pubkey"}
                 ]
             },
             {
                 "name":"MlKem1024Encapsulator", 
-                "derives" :"Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "derives" :"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields" :  [
                     {"name":"public_key", "type":"MlKem1024Pubkey"}
                 ]
@@ -378,8 +378,8 @@
                 "name":"MlKemKeypair",
                 "generics": [],
                 "functions": [
-                    {"name" : "to_bytes",   "instance" : "&self", "return": "&MlKemPrivateSeed", "params" : [] },
-                    {"name" : "from_bytes", "return": "Self", "params" : [ {"name": "seed_bytes", "type":"&MlKemPrivateSeed"} ] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&MlKemPrivateSeed", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "seed_bytes", "type":"&MlKemPrivateSeed"} ] },
                     {"name" : "from_seed",  "return": "Self", "params" : [ {"name": "seed_bytes", "type":"&MlKemPrivateSeed"} ] }
                 ]
             }
@@ -560,6 +560,64 @@
         ],
         "impls" : [
             {"trait":"IAloeRng", "struct":"AloeRng"}
+        ]
+    },
+    "recovery_api" : {
+        "sz_consts" : [
+            {"name": "RECOVERY_PRIVKEY_SZ",    "value": "32"},
+            {"name": "RECOVERABLE_CIPHER_SZ",  "value": "MLKEM_512_CIPHER_SZ"}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_RECOVERY_PRIVKEY", "size": "RECOVERY_PRIVKEY_SZ"}
+        ],
+        "byte_aliases" : [
+            {"name": "RecoverySecret", "length": "RECOVERY_PRIVKEY_SZ"},
+            {"name": "RecoveryCipher", "length": "RECOVERABLE_CIPHER_SZ"}
+        ],
+        "structs" : [
+            {
+                "name": "RecoveryKey",
+                "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "fields": [
+                    {"name": "cipher", "type": "RecoveryCipher", "description": "KEM ciphertext presented to authorizer for decapsulation"},
+                    {"name": "secret", "type": "RecoverySecret", "description": "Recoverer private key component"}
+                ]
+            },
+            {
+                "name": "RecoverableSecret",
+                "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "fields": [
+                    {"name": "secret",       "type": "RecoverySecret", "description": "The derived secret"},
+                    {"name": "recovery_key", "type": "RecoveryKey",    "description": "Recovery key held by recoverer"}
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name": "IRecoverableSecret",
+                "functions": [
+                    {
+                        "name": "create",
+                        "return": "Self",
+                        "params": [
+                            {"name": "authorizer", "type": "MlKem512Encapsulator"},
+                            {"name": "recovery_secret", "type": "RecoverySecret"},
+                            {"name": "prk_seed", "type": "MlKemPrkSeed"}
+                        ]
+                    },
+                    {
+                        "name": "recover",
+                        "return": "RecoverySecret",
+                        "params": [
+                            {"name": "authorization",    "type": "MlKemSecret"},
+                            {"name": "recovery_secret",  "type": "&RecoverySecret"}
+                        ]
+                    }
+                ]
+            }
+        ],
+        "impls": [
+            {"trait": "IRecoverableSecret", "struct": "RecoverableSecret"}
         ]
     }
 }

@@ -213,6 +213,21 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
                             .unwrap();
                         }
 
+                        // Emit param descriptions as doc comment lines
+                        if let Some(params) = function["params"].as_array() {
+                            for p in params {
+                                if let Some(pdesc) = p.get("description") {
+                                    writeln!(
+                                        out,
+                                        "{}    /// * `{}` - {}",
+                                        indent,
+                                        p["name"].as_str().unwrap(),
+                                        pdesc.as_str().unwrap()
+                                    ).unwrap();
+                                }
+                            }
+                        }
+
                         if let Some(instance) = function.get("instance") {
                             instance_str = format!("{}, ", instance.as_str().unwrap());
                         }
@@ -306,8 +321,8 @@ fn generate_api(jsonfile: &str, outfile: PathBuf) {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=api_core.json");
+    println!("cargo:rerun-if-changed=.generated/api_core_merged.json");
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir).join("api_core.rs");
-    generate_api("api_core.json", out_path);
+    generate_api(".generated/api_core_merged.json", out_path);
 }

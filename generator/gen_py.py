@@ -545,11 +545,11 @@ class PythonGenerator(LangGenerator):
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
-    meta = load_meta("api_core.json")
+    meta = load_meta(".generated/api_core_merged.json")
     gen = PythonGenerator(meta)
     output = gen.generate()
     GEN_DIR.mkdir(parents=True, exist_ok=True)
-    outpath = GEN_DIR / "aloecrypt.py"
+    outpath = GEN_DIR / "aloecrypt_core.py"
     outpath.write_text(output)
     print(f"Generated {outpath} ({len(output)} bytes)")
 

@@ -54,49 +54,58 @@ impl MlDsa87Verifier {
 }
 
 impl MlDsaKeypair for MlDsa44Keypair {
-    fn to_bytes(&self) -> &MlDsaPrivateSeed {
+    fn pack_bytes(&self) -> &MlDsaPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        Self::from_bytes(seed_bytes)
+        Self::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let signing_key = MlDsa44Params::from_seed(seed_bytes.into());
+    fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
+        let public_key = {
+            let signing_key = MlDsa44Params::from_seed(seed_bytes.into());
+            signing_key.verifying_key().encode().into()
+        };
         Self {
             private_seed: (*seed_bytes).into(),
-            public_key: signing_key.verifying_key().encode().into(),
+            public_key,
         }
     }
 }
 
 impl MlDsaKeypair for MlDsa65Keypair {
-    fn to_bytes(&self) -> &MlDsaPrivateSeed {
+    fn pack_bytes(&self) -> &MlDsaPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        Self::from_bytes(seed_bytes)
+        Self::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let signing_key = MlDsa65Params::from_seed(seed_bytes.into());
+    fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
+        let public_key = {
+            let signing_key = MlDsa65Params::from_seed(seed_bytes.into());
+            signing_key.verifying_key().encode().into()
+        };
         Self {
             private_seed: (*seed_bytes).into(),
-            public_key: signing_key.verifying_key().encode().into(),
+            public_key,
         }
     }
 }
 
 impl MlDsaKeypair for MlDsa87Keypair {
-    fn to_bytes(&self) -> &MlDsaPrivateSeed {
+    fn pack_bytes(&self) -> &MlDsaPrivateSeed {
         &self.private_seed
     }
     fn from_seed(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        Self::from_bytes(seed_bytes)
+        Self::unpack_bytes(seed_bytes)
     }
-    fn from_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let signing_key = MlDsa87Params::from_seed(seed_bytes.into());
+    fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
+        let public_key = {
+            let signing_key = MlDsa87Params::from_seed(seed_bytes.into());
+            signing_key.verifying_key().encode().into()
+        };
         Self {
             private_seed: (*seed_bytes).into(),
-            public_key: signing_key.verifying_key().encode().into(),
+            public_key,
         }
     }
 }
@@ -135,10 +144,10 @@ impl IMlDsa87Keypair for MlDsa87Keypair {
 }
 
 impl IMlDsa44Pubkey for MlDsa44Verifier {
-    fn to_bytes(&self) -> &MlDsa44Pubkey {
+    fn pack_bytes(&self) -> &MlDsa44Pubkey {
         &self.public_key
     }
-    fn from_bytes(bytes: &MlDsa44Pubkey) -> Self {
+    fn unpack_bytes(bytes: &MlDsa44Pubkey) -> Self {
         Self {
             public_key: (*bytes).into(),
         }
@@ -170,10 +179,10 @@ impl IMlDsa44Verifier for MlDsa44Keypair {
 }
 
 impl IMlDsa65Pubkey for MlDsa65Verifier {
-    fn to_bytes(&self) -> &MlDsa65Pubkey {
+    fn pack_bytes(&self) -> &MlDsa65Pubkey {
         &self.public_key
     }
-    fn from_bytes(bytes: &MlDsa65Pubkey) -> Self {
+    fn unpack_bytes(bytes: &MlDsa65Pubkey) -> Self {
         Self {
             public_key: (*bytes).into(),
         }
@@ -204,10 +213,10 @@ impl IMlDsa65Verifier for MlDsa65Keypair {
 }
 
 impl IMlDsa87Pubkey for MlDsa87Verifier {
-    fn to_bytes(&self) -> &MlDsa87Pubkey {
+    fn pack_bytes(&self) -> &MlDsa87Pubkey {
         &self.public_key
     }
-    fn from_bytes(bytes: &MlDsa87Pubkey) -> Self {
+    fn unpack_bytes(bytes: &MlDsa87Pubkey) -> Self {
         Self {
             public_key: (*bytes).into(),
         }

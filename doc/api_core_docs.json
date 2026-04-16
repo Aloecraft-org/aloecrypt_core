@@ -1,0 +1,636 @@
+{
+    "core_api": {
+        "sz_consts": [
+            {"name": "ENCRYPTED_TAG_SZ", "description": "Size in bytes of the authentication tag appended to each encrypted chunk by the AEAD cipher (GCM/Poly1305). This overhead must be accounted for when sizing encrypted output buffers."}
+        ]
+    },
+    "dsa_api": {
+        "sz_consts": [
+            {"name": "MLDSA_SEED_SZ",          "description": "Size in bytes of the private seed used to deterministically derive an ML-DSA keypair."},
+            {"name": "MLDSA_44_PUBKEY_SZ",     "description": "Size in bytes of an ML-DSA-44 public (verifier) key."},
+            {"name": "MLDSA_65_PUBKEY_SZ",     "description": "Size in bytes of an ML-DSA-65 public (verifier) key."},
+            {"name": "MLDSA_87_PUBKEY_SZ",     "description": "Size in bytes of an ML-DSA-87 public (verifier) key."},
+            {"name": "MLDSA_44_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-44."},
+            {"name": "MLDSA_65_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-65."},
+            {"name": "MLDSA_87_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-87."},
+            {"name": "MLDSA_MU_SZ",            "description": "Size in bytes of the message representative mu, the internal hash of the message used during signing and verification."},
+            {"name": "MLDSA_MU_RAND_SEED_SZ",  "description": "Size in bytes of the randomness seed used during computation of mu, providing hedged signing."},
+            {"name": "MLDSA_44_KEYPAIR_SZ",    "description": "Total size in bytes of a serialized ML-DSA-44 keypair (private seed concatenated with public key)."},
+            {"name": "MLDSA_65_KEYPAIR_SZ",    "description": "Total size in bytes of a serialized ML-DSA-65 keypair (private seed concatenated with public key)."},
+            {"name": "MLDSA_87_KEYPAIR_SZ",    "description": "Total size in bytes of a serialized ML-DSA-87 keypair (private seed concatenated with public key)."}
+        ],
+        "byte_aliases": [
+            {"name": "MlDsa44KeypairRaw",  "description": "Raw byte representation of an ML-DSA-44 keypair. Contains the private seed followed by the public key."},
+            {"name": "MlDsa65KeypairRaw",  "description": "Raw byte representation of an ML-DSA-65 keypair. Contains the private seed followed by the public key."},
+            {"name": "MlDsa87KeypairRaw",  "description": "Raw byte representation of an ML-DSA-87 keypair. Contains the private seed followed by the public key."},
+            {"name": "MlDsaPrivateSeed",   "description": "Secret seed bytes from which an ML-DSA keypair is deterministically derived. Must be generated from a cryptographically secure random source and kept confidential."},
+            {"name": "MlDsa44Pubkey",      "description": "Public key bytes for ML-DSA-44. Safe to share openly; used by verifiers to authenticate signatures."},
+            {"name": "MlDsa65Pubkey",      "description": "Public key bytes for ML-DSA-65. Safe to share openly; used by verifiers to authenticate signatures."},
+            {"name": "MlDsa87Pubkey",      "description": "Public key bytes for ML-DSA-87. Safe to share openly; used by verifiers to authenticate signatures."},
+            {"name": "MlDsa44Signature",   "description": "Detached signature bytes produced by ML-DSA-44. Transmitted alongside the original message to allow third-party verification."},
+            {"name": "MlDsa65Signature",   "description": "Detached signature bytes produced by ML-DSA-65. Transmitted alongside the original message to allow third-party verification."},
+            {"name": "MlDsa87Signature",   "description": "Detached signature bytes produced by ML-DSA-87. Transmitted alongside the original message to allow third-party verification."},
+            {"name": "MlDsaMuRandSeed",    "description": "Randomness seed injected into mu computation for hedged (randomized) signing, reducing risk from deterministic signing under fault attacks."},
+            {"name": "MlDsaMu",            "description": "Message representative produced by hashing the message (and optional context) prior to signing. Intermediate value used internally by the ML-DSA algorithm."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_MLDSA_SEED", "description": "Zero-initialized ML-DSA private seed. Provided as a convenient stack-allocated buffer to fill before keypair derivation; must never be used as an actual key."}
+        ],
+        "structs": [
+            {
+                "name": "MlDsa44Keypair",
+                "description": "An ML-DSA-44 keypair holding both the private seed and the derived public key. The security level targets NIST Category 2. Use for signing operations where moderate signature size and high performance are preferred.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-44 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "public_key",   "description": "Derived ML-DSA-44 public key. May be published or transmitted to verifiers."}
+                ]
+            },
+            {
+                "name": "MlDsa65Keypair",
+                "description": "An ML-DSA-65 keypair holding both the private seed and the derived public key. Targets NIST Category 3, providing a higher security margin than ML-DSA-44 at the cost of larger key and signature sizes.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-65 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "public_key",   "description": "Derived ML-DSA-65 public key. May be published or transmitted to verifiers."}
+                ]
+            },
+            {
+                "name": "MlDsa87Keypair",
+                "description": "An ML-DSA-87 keypair holding both the private seed and the derived public key. Targets NIST Category 5, the highest security level, with the largest key and signature sizes.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-87 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "public_key",   "description": "Derived ML-DSA-87 public key. May be published or transmitted to verifiers."}
+                ]
+            },
+            {
+                "name": "MlDsa44Verifier",
+                "description": "A standalone ML-DSA-44 verifier holding only the public key. Share this with parties that need to verify signatures but must not have access to the private seed.",
+                "fields": [
+                    {"name": "public_key", "description": "ML-DSA-44 public key used exclusively for signature verification."}
+                ]
+            },
+            {
+                "name": "MlDsa65Verifier",
+                "description": "A standalone ML-DSA-65 verifier holding only the public key. Share this with parties that need to verify signatures but must not have access to the private seed.",
+                "fields": [
+                    {"name": "public_key", "description": "ML-DSA-65 public key used exclusively for signature verification."}
+                ]
+            },
+            {
+                "name": "MlDsa87Verifier",
+                "description": "A standalone ML-DSA-87 verifier holding only the public key. Share this with parties that need to verify signatures but must not have access to the private seed.",
+                "fields": [
+                    {"name": "public_key", "description": "ML-DSA-87 public key used exclusively for signature verification."}
+                ]
+            }
+        ],
+        "traits": [
+            {
+                "name": "MlDsaKeypair",
+                "description": "Common serialization interface shared by all ML-DSA keypair variants. Provides seed-based construction and round-trip byte serialization.",
+                "functions": [
+                    {"name": "pack_bytes",   "description": "Returns a reference to the raw private seed bytes. The public key can be re-derived from these bytes at any time, so only the seed needs to be persisted."},
+                    {"name": "unpack_bytes", "description": "Reconstructs a keypair from previously serialized private seed bytes. Deterministic: the same seed always produces the same keypair.", "params": [{"name": "seed_bytes", "description": "Raw private seed bytes previously obtained from pack."}]},
+                    {"name": "from_seed",  "description": "Derives a new keypair from a provided seed. Deterministic: the same seed always produces the same keypair. The seed must originate from a cryptographically secure random source.", "params": [{"name": "seed_bytes", "description": "A 32-byte secret seed generated from a CSPRNG."}]}
+                ]
+            },
+            {
+                "name": "IMlDsa44Pubkey",
+                "description": "Byte serialization interface for ML-DSA-44 public keys, enabling storage and transmission.",
+                "functions": [
+                    {"name": "pack_bytes",   "description": "Returns a reference to the raw ML-DSA-44 public key bytes. Safe to transmit or store publicly."},
+                    {"name": "unpack_bytes", "description": "Constructs an ML-DSA-44 public key object from raw bytes.", "params": [{"name": "bytes", "description": "Raw public key bytes of exactly MLDSA_44_PUBKEY_SZ length."}]}
+                ]
+            },
+            {
+                "name": "IMlDsa65Pubkey",
+                "description": "Byte serialization interface for ML-DSA-65 public keys, enabling storage and transmission.",
+                "functions": [
+                    {"name": "pack_bytes",   "description": "Returns a reference to the raw ML-DSA-65 public key bytes. Safe to transmit or store publicly."},
+                    {"name": "unpack_bytes", "description": "Constructs an ML-DSA-65 public key object from raw bytes.", "params": [{"name": "bytes", "description": "Raw public key bytes of exactly MLDSA_65_PUBKEY_SZ length."}]}
+                ]
+            },
+            {
+                "name": "IMlDsa87Pubkey",
+                "description": "Byte serialization interface for ML-DSA-87 public keys, enabling storage and transmission.",
+                "functions": [
+                    {"name": "pack_bytes",   "description": "Returns a reference to the raw ML-DSA-87 public key bytes. Safe to transmit or store publicly."},
+                    {"name": "unpack_bytes", "description": "Constructs an ML-DSA-87 public key object from raw bytes.", "params": [{"name": "bytes", "description": "Raw public key bytes of exactly MLDSA_87_PUBKEY_SZ length."}]}
+                ]
+            },
+            {
+                "name": "IMlDsa44Keypair",
+                "description": "Signing interface for ML-DSA-44 keypairs. Provides message signing and verifier extraction.",
+                "functions": [
+                    {"name": "sign",         "description": "Signs an arbitrary byte message using the ML-DSA-44 private key and returns a detached signature. The signature can be verified by any holder of the corresponding public key.", "params": [{"name": "msg", "description": "The message bytes to sign. May be of any length."}]},
+                    {"name": "get_verifier", "description": "Extracts a standalone MlDsa44Verifier containing only the public key. Use this to share verification capability without exposing the private seed."}
+                ]
+            },
+            {
+                "name": "IMlDsa65Keypair",
+                "description": "Signing interface for ML-DSA-65 keypairs. Provides message signing and verifier extraction.",
+                "functions": [
+                    {"name": "sign",         "description": "Signs an arbitrary byte message using the ML-DSA-65 private key and returns a detached signature.", "params": [{"name": "msg", "description": "The message bytes to sign. May be of any length."}]},
+                    {"name": "get_verifier", "description": "Extracts a standalone MlDsa65Verifier containing only the public key."}
+                ]
+            },
+            {
+                "name": "IMlDsa87Keypair",
+                "description": "Signing interface for ML-DSA-87 keypairs. Provides message signing and verifier extraction.",
+                "functions": [
+                    {"name": "sign",         "description": "Signs an arbitrary byte message using the ML-DSA-87 private key and returns a detached signature.", "params": [{"name": "msg", "description": "The message bytes to sign. May be of any length."}]},
+                    {"name": "get_verifier", "description": "Extracts a standalone MlDsa87Verifier containing only the public key."}
+                ]
+            },
+            {
+                "name": "IMlDsa44Verifier",
+                "description": "Signature verification interface for ML-DSA-44. Implemented by both MlDsa44Verifier (public-key-only) and MlDsa44Keypair (which also holds the public key).",
+                "functions": [
+                    {"name": "verify", "description": "Verifies that a detached ML-DSA-44 signature is valid for the given message under this public key. Returns true if the signature is authentic and unmodified, false otherwise. Does not throw or panic on invalid signatures.", "params": [
+                        {"name": "msg",       "description": "The original message bytes that were signed."},
+                        {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_44_SIGNATURE_SZ length."}
+                    ]}
+                ]
+            },
+            {
+                "name": "IMlDsa65Verifier",
+                "description": "Signature verification interface for ML-DSA-65.",
+                "functions": [
+                    {"name": "verify", "description": "Verifies that a detached ML-DSA-65 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
+                        {"name": "msg",       "description": "The original message bytes that were signed."},
+                        {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_65_SIGNATURE_SZ length."}
+                    ]}
+                ]
+            },
+            {
+                "name": "IMlDsa87Verifier",
+                "description": "Signature verification interface for ML-DSA-87.",
+                "functions": [
+                    {"name": "verify", "description": "Verifies that a detached ML-DSA-87 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
+                        {"name": "msg",       "description": "The original message bytes that were signed."},
+                        {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_87_SIGNATURE_SZ length."}
+                    ]}
+                ]
+            }
+        ]
+    },
+    "hash_api": {
+        "sz_consts": [
+            {"name": "HASH_KEY_256_SZ", "description": "Size in bytes of a 256-bit hash or HMAC output."}
+        ],
+        "byte_aliases": [
+            {"name": "HashKey256", "description": "A 256-bit (32-byte) hash or HMAC digest. Used as a general-purpose key derivation or integrity output."}
+        ],
+        "functions": [
+            {
+                "name": "hash",
+                "description": "Computes a domain-separated salted hash of the input keying material. The domain string and salt are mixed in to prevent cross-context collisions. Use when you need a general-purpose hash bound to a specific protocol role.",
+                "params": [
+                    {"name": "salt",        "description": "A per-invocation or per-entity salt value that randomizes the hash output."},
+                    {"name": "ikm",         "description": "Input keying material: the primary data to be hashed."},
+                    {"name": "domain_info", "description": "A string constant identifying the protocol context or purpose (e.g. \"session-key-derive\"). Must be unique per distinct usage to prevent cross-domain attacks."}
+                ]
+            },
+            {
+                "name": "hmac",
+                "description": "Computes a domain-separated HMAC over the input keying material, using the salt as the HMAC key. Provides message authentication in addition to hashing.",
+                "params": [
+                    {"name": "salt",        "description": "Value used as the HMAC key material."},
+                    {"name": "ikm",         "description": "Input keying material to authenticate."},
+                    {"name": "domain_info", "description": "Domain separation string to scope the HMAC output to a specific protocol context."}
+                ]
+            },
+            {
+                "name": "salted_hmac",
+                "description": "Computes an HMAC using only a salt and input keying material, without domain separation. Prefer hmac() when a domain string is available.",
+                "params": [
+                    {"name": "salt", "description": "Value used as the HMAC key material."},
+                    {"name": "ikm",  "description": "Input keying material to authenticate."}
+                ]
+            },
+            {
+                "name": "domain_hmac",
+                "description": "Computes an HMAC over input keying material with domain separation but no external salt. The domain string acts as the only differentiator between usages.",
+                "params": [
+                    {"name": "ikm",         "description": "Input keying material to authenticate."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the protocol context."}
+                ]
+            },
+            {
+                "name": "salted_hash",
+                "description": "Computes a hash of input keying material mixed with a salt, without domain separation.",
+                "params": [
+                    {"name": "salt", "description": "Per-invocation salt value mixed into the hash."},
+                    {"name": "ikm",  "description": "Input keying material to hash."}
+                ]
+            },
+            {
+                "name": "domain_hash",
+                "description": "Computes a domain-separated hash of the input keying material with no external salt. Useful for deterministic derivation within a fixed protocol context.",
+                "params": [
+                    {"name": "ikm",         "description": "Input keying material to hash."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the protocol context."}
+                ]
+            },
+            {
+                "name": "simple_hmac",
+                "description": "Computes a bare HMAC over the input with no salt or domain separation. Provided for low-level or legacy use; prefer salted or domain-separated variants in new protocols.",
+                "params": [
+                    {"name": "ikm", "description": "Input keying material to authenticate."}
+                ]
+            },
+            {
+                "name": "simple_hash",
+                "description": "Computes a bare hash of the input with no salt or domain separation. Provided for low-level or legacy use; prefer salted or domain-separated variants in new protocols.",
+                "params": [
+                    {"name": "ikm", "description": "Input data to hash."}
+                ]
+            }
+        ]
+    },
+    "kem_api": {
+        "sz_consts": [
+            {"name": "MLKEM_PRK_SEED_SZ",       "description": "Size in bytes of the pseudorandom key (PRK) seed passed to the encapsulator to deterministically derive the shared secret and ciphertext."},
+            {"name": "MLKEM_SECRET_SZ",          "description": "Size in bytes of the shared secret produced by both encapsulation and decapsulation. Both sides obtain this same 32-byte value on success."},
+            {"name": "MLKEM_512_CIPHER_SZ",      "description": "Size in bytes of the ML-KEM-512 encapsulated ciphertext transmitted from encapsulator to decapsulator."},
+            {"name": "MLKEM_768_CIPHER_SZ",      "description": "Size in bytes of the ML-KEM-768 encapsulated ciphertext."},
+            {"name": "MLKEM_1024_CIPHER_SZ",     "description": "Size in bytes of the ML-KEM-1024 encapsulated ciphertext."},
+            {"name": "MLKEM_512_ENCAP_KEY_SZ",   "description": "Size in bytes of the ML-KEM-512 public encapsulation key."},
+            {"name": "MLKEM_768_ENCAP_KEY_SZ",   "description": "Size in bytes of the ML-KEM-768 public encapsulation key."},
+            {"name": "MLKEM_1024_ENCAP_KEY_SZ",  "description": "Size in bytes of the ML-KEM-1024 public encapsulation key."},
+            {"name": "MLKEM_DECAP_KEY_SZ",       "description": "Size in bytes of the private decapsulation seed from which the full ML-KEM decapsulation key is derived."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_KEM_PRK_SEED",  "description": "Zero-initialized PRK seed buffer. Intended as a convenience allocation target; must be filled with CSPRNG output before use."},
+            {"name": "EMPTY_KEM_DECAP_SEED","description": "Zero-initialized decapsulation seed buffer. Intended as a convenience allocation target; must be filled with CSPRNG output before use."}
+        ],
+        "byte_aliases": [
+            {"name": "MlKemPrkSeed",     "description": "Pseudorandom key seed provided to the encapsulator. Determines the shared secret and ciphertext deterministically; must come from a CSPRNG."},
+            {"name": "MlKem512Pubkey",   "description": "ML-KEM-512 public encapsulation key. Shared with the encapsulating party so they can produce a ciphertext and shared secret."},
+            {"name": "MlKem768Pubkey",   "description": "ML-KEM-768 public encapsulation key."},
+            {"name": "MlKem1024Pubkey",  "description": "ML-KEM-1024 public encapsulation key."},
+            {"name": "MlKemPrivateSeed", "description": "Secret seed from which the ML-KEM decapsulation key is derived. Keep confidential; exposure allows decapsulation of any ciphertext addressed to this keypair."},
+            {"name": "MlKemSecret",      "description": "32-byte shared secret established by KEM encapsulation/decapsulation. Both parties derive this same value; use it as key material for a symmetric cipher."},
+            {"name": "MlKem512Cipher",   "description": "ML-KEM-512 ciphertext produced by encapsulation and sent to the decapsulating party."},
+            {"name": "MlKem768Cipher",   "description": "ML-KEM-768 ciphertext produced by encapsulation."},
+            {"name": "MlKem1024Cipher",  "description": "ML-KEM-1024 ciphertext produced by encapsulation."}
+        ],
+        "structs": [
+            {
+                "name": "MlKem512Keypair",
+                "description": "An ML-KEM-512 keypair. Targets NIST Category 1. Holds the private decapsulation seed and the derived public encapsulation key. The public key is shared with encapsulating peers; the private seed is kept secret.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret decapsulation seed. Keep confidential."},
+                    {"name": "public_key",   "description": "Public encapsulation key. Safe to distribute to any party that needs to establish a shared secret with the holder of this keypair."}
+                ]
+            },
+            {
+                "name": "MlKem768Keypair",
+                "description": "An ML-KEM-768 keypair. Targets NIST Category 3, balancing security and performance. Holds the private decapsulation seed and the derived public encapsulation key.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret decapsulation seed. Keep confidential."},
+                    {"name": "public_key",   "description": "Public encapsulation key. Safe to distribute."}
+                ]
+            },
+            {
+                "name": "MlKem1024Keypair",
+                "description": "An ML-KEM-1024 keypair. Targets NIST Category 5, the highest security level. Holds the private decapsulation seed and the derived public encapsulation key.",
+                "fields": [
+                    {"name": "private_seed", "description": "Secret decapsulation seed. Keep confidential."},
+                    {"name": "public_key",   "description": "Public encapsulation key. Safe to distribute."}
+                ]
+            },
+            {
+                "name": "MlKem512EncapsulatorResult",
+                "description": "Output of an ML-KEM-512 encapsulation operation. Contains both the shared secret (retained locally) and the ciphertext (sent to the decapsulating peer).",
+                "fields": [
+                    {"name": "secret", "description": "The 32-byte shared secret established by this encapsulation. Do not transmit; use as symmetric key material."},
+                    {"name": "cipher", "description": "The ciphertext to transmit to the decapsulating peer, who will use it to derive the same shared secret."}
+                ]
+            },
+            {
+                "name": "MlKem768EncapsulatorResult",
+                "description": "Output of an ML-KEM-768 encapsulation operation.",
+                "fields": [
+                    {"name": "secret", "description": "The 32-byte shared secret. Retain locally as key material; do not transmit."},
+                    {"name": "cipher", "description": "The ciphertext to send to the decapsulating peer."}
+                ]
+            },
+            {
+                "name": "MlKem1024EncapsulatorResult",
+                "description": "Output of an ML-KEM-1024 encapsulation operation.",
+                "fields": [
+                    {"name": "secret", "description": "The 32-byte shared secret. Retain locally as key material; do not transmit."},
+                    {"name": "cipher", "description": "The ciphertext to send to the decapsulating peer."}
+                ]
+            },
+            {
+                "name": "MlKem512Encapsulator",
+                "description": "Holds an ML-KEM-512 public key and performs encapsulation on behalf of a sender. Constructed from a peer's public key; does not contain any private material.",
+                "fields": [
+                    {"name": "public_key", "description": "The recipient's ML-KEM-512 public encapsulation key."}
+                ]
+            },
+            {
+                "name": "MlKem768Encapsulator",
+                "description": "Holds an ML-KEM-768 public key and performs encapsulation on behalf of a sender.",
+                "fields": [
+                    {"name": "public_key", "description": "The recipient's ML-KEM-768 public encapsulation key."}
+                ]
+            },
+            {
+                "name": "MlKem1024Encapsulator",
+                "description": "Holds an ML-KEM-1024 public key and performs encapsulation on behalf of a sender.",
+                "fields": [
+                    {"name": "public_key", "description": "The recipient's ML-KEM-1024 public encapsulation key."}
+                ]
+            }
+        ],
+        "traits": [
+            {
+                "name": "IMlKem512Keypair",
+                "description": "Core KEM operations for an ML-KEM-512 keypair: decapsulation and encapsulator extraction.",
+                "functions": [
+                    {"name": "decapsulate",     "description": "Decapsulates a received ciphertext using the private decapsulation key, recovering the shared secret originally established by the encapsulator. The returned secret will be equal to the encapsulator's secret if the ciphertext is authentic.", "params": [{"name": "encapsulated_key", "description": "The ML-KEM-512 ciphertext received from the encapsulating peer."}]},
+                    {"name": "get_encapsulator","description": "Constructs a standalone MlKem512Encapsulator from this keypair's public key, suitable for sharing with peers who need to initiate key establishment without holding the private seed."}
+                ]
+            },
+            {
+                "name": "IMlKem768Keypair",
+                "description": "Core KEM operations for an ML-KEM-768 keypair.",
+                "functions": [
+                    {"name": "decapsulate",     "description": "Decapsulates a received ML-KEM-768 ciphertext, recovering the shared secret.", "params": [{"name": "encapsulated_key", "description": "The ML-KEM-768 ciphertext received from the encapsulating peer."}]},
+                    {"name": "get_encapsulator","description": "Constructs a standalone MlKem768Encapsulator from this keypair's public key."}
+                ]
+            },
+            {
+                "name": "IMlKem1024Keypair",
+                "description": "Core KEM operations for an ML-KEM-1024 keypair.",
+                "functions": [
+                    {"name": "decapsulate",     "description": "Decapsulates a received ML-KEM-1024 ciphertext, recovering the shared secret.", "params": [{"name": "encapsulated_key", "description": "The ML-KEM-1024 ciphertext received from the encapsulating peer."}]},
+                    {"name": "get_encapsulator","description": "Constructs a standalone MlKem1024Encapsulator from this keypair's public key."}
+                ]
+            },
+            {
+                "name": "IMlKem512Encapsulator",
+                "description": "Encapsulation interface for ML-KEM-512. Used by the initiating party to establish a shared secret with the holder of an ML-KEM-512 keypair.",
+                "functions": [
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]}
+                ]
+            },
+            {
+                "name": "IMlKem768Encapsulator",
+                "description": "Encapsulation interface for ML-KEM-768.",
+                "functions": [
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                ]
+            },
+            {
+                "name": "IMlKem1024Encapsulator",
+                "description": "Encapsulation interface for ML-KEM-1024.",
+                "functions": [
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                ]
+            },
+            {
+                "name": "MlKemKeypair",
+                "description": "Common serialization interface shared by all ML-KEM keypair variants.",
+                "functions": [
+                    {"name": "pack_bytes",   "description": "Returns a reference to the raw private decapsulation seed bytes. Only the seed needs to be persisted; the public key can be re-derived from it."},
+                    {"name": "unpack_bytes", "description": "Reconstructs an ML-KEM keypair from previously serialized private seed bytes.", "params": [{"name": "seed_bytes", "description": "Raw private decapsulation seed previously obtained from pack."}]},
+                    {"name": "from_seed",  "description": "Derives a new ML-KEM keypair from a provided seed. The same seed always yields the same keypair.", "params": [{"name": "seed_bytes", "description": "A secret seed from a CSPRNG used to derive the keypair."}]}
+                ]
+            }
+        ]
+    },
+    "password_api": {
+        "sz_consts": [
+            {"name": "PASSWORD_CIPHER_CHUNK_SZ", "description": "Size in bytes of each plaintext chunk processed per encrypt/decrypt call. Data is streamed through the cipher in fixed-size blocks of this length."},
+            {"name": "PASSWORD_NONCE_SZ",         "description": "Size in bytes of the nonce used to initialize the password cipher. Must be unique per encryption operation for a given key."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_PBKDF_KEY",       "description": "Zero-initialized PBKDF key buffer. Provided as a convenience allocation target; must be filled with a derived key before use."},
+            {"name": "EMPTY_PASSWORD_NONCE",  "description": "Zero-initialized nonce buffer. Provided as a convenience allocation target; must be filled with random bytes before use."}
+        ],
+        "byte_aliases": [
+            {"name": "PasswordEncryptedChunk",   "description": "A fixed-size buffer holding one encrypted chunk plus its authentication tag (PASSWORD_CIPHER_CHUNK_SZ + ENCRYPTED_TAG_SZ bytes total)."},
+            {"name": "PasswordUnencryptedChunk", "description": "A fixed-size buffer holding one plaintext chunk of PASSWORD_CIPHER_CHUNK_SZ bytes."},
+            {"name": "PasswordNonce",            "description": "Nonce used to initialize the password cipher. Must be unique for each encryption operation performed under the same key. Typically generated from a CSPRNG and stored alongside the ciphertext."}
+        ],
+        "structs": [
+            {
+                "name": "PasswordCipher",
+                "description": "Streaming AEAD cipher state for password-based encryption and decryption. Initialized once with a derived key and nonce, then advanced chunk-by-chunk. The counter field tracks position in the stream; n_bytes and chunk_sz track how much data remains.",
+                "fields": [
+                    {"name": "key",      "description": "The 32-byte symmetric key derived from a password via PBKDF. Must be kept confidential for the lifetime of the cipher."},
+                    {"name": "nonce",    "description": "The 12-byte nonce that initializes the AEAD cipher. Must be unique per key; typically stored alongside the ciphertext."},
+                    {"name": "counter",  "description": "Current chunk index, incremented automatically after each encrypt or decrypt call. Do not modify externally."},
+                    {"name": "n_bytes",  "description": "Total number of bytes in the input data being processed, used to determine when the final partial chunk is reached."},
+                    {"name": "chunk_sz", "description": "Number of bytes per chunk; typically equal to PASSWORD_CIPHER_CHUNK_SZ. Set during initialization based on the input length."}
+                ]
+            },
+            {
+                "name": "EncryptChunkResult",
+                "description": "Result of a single streaming encryption step. Contains the updated cipher state, the encrypted output chunk, and a completion flag.",
+                "fields": [
+                    {"name": "cipher",     "description": "The updated cipher state after encrypting this chunk. Pass to the next encrypt call to continue streaming."},
+                    {"name": "next_chunk", "description": "The encrypted and authenticated output chunk. Append this to the ciphertext output buffer."},
+                    {"name": "is_done",    "description": "Non-zero when this is the final chunk and encryption is complete. The calling loop should break on this condition."}
+                ]
+            },
+            {
+                "name": "DecryptChunkResult",
+                "description": "Result of a single streaming decryption step. Contains the updated cipher state, the decrypted plaintext chunk, the number of valid bytes in it, and a completion flag.",
+                "fields": [
+                    {"name": "cipher",     "description": "The updated cipher state after decrypting this chunk. Pass to the next decrypt call to continue streaming."},
+                    {"name": "next_chunk", "description": "Buffer containing the decrypted plaintext. Only the first n_bytes are valid output; the remainder may be padding."},
+                    {"name": "n_bytes",    "description": "Number of valid plaintext bytes in next_chunk for this step. On intermediate chunks this equals PASSWORD_CIPHER_CHUNK_SZ; on the final chunk it may be less."},
+                    {"name": "is_done",    "description": "Non-zero when this is the final chunk and decryption is complete. The calling loop should break on this condition."}
+                ]
+            }
+        ],
+        "traits": [
+            {
+                "name": "IPasswordCipher",
+                "description": "Constructor interface for PasswordCipher. Initializes the streaming cipher state from input data metadata, a derived key, and a nonce.",
+                "functions": [
+                    {
+                        "name": "new",
+                        "description": "Initializes a PasswordCipher for streaming encryption or decryption. The data slice is used to determine the total byte count and chunk sizing; its contents are not read during initialization. Call encrypt_next or decrypt_next repeatedly until is_done is set.",
+                        "params": [
+                            {"name": "data",  "description": "A slice over the full input data. Used to derive chunk count and sizing; the cipher does not retain a reference to this data."},
+                            {"name": "key",   "description": "A 32-byte symmetric key produced by a PBKDF. Must match the key used during the corresponding encrypt or decrypt operation."},
+                            {"name": "nonce", "description": "A 12-byte nonce that must be unique for each encryption performed under the same key. Reusing a nonce with the same key breaks confidentiality."}
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "pkdf_api": {
+        "sz_consts": [
+            {"name": "PBKDF_KEY_SZ", "description": "Size in bytes of the derived symmetric key output from all PBKDF functions."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_PBKDF_KEY", "description": "Zero-initialized PBKDF key buffer. Provided as a convenience allocation target; must never be used as actual key material."}
+        ],
+        "byte_aliases": [
+            {"name": "PbkdfKey", "description": "A 32-byte symmetric key derived from a password via PBKDF. Use as key material for AEAD ciphers or other symmetric operations."}
+        ],
+        "functions": [
+            {
+                "name": "pbkdf",
+                "description": "Derives a 32-byte symmetric key from a password and salt using a password-based key derivation function with an explicit iteration count. Higher iteration counts increase resistance to brute-force attacks at the cost of derivation time.",
+                "params": [
+                    {"name": "password", "description": "The user-supplied password bytes to derive from."},
+                    {"name": "salt",     "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
+                    {"name": "iters",    "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                ]
+            },
+            {
+                "name": "salted_pbkdf",
+                "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
+                "params": [
+                    {"name": "password", "description": "The user-supplied password bytes."},
+                    {"name": "salt",     "description": "A per-credential random salt."}
+                ]
+            },
+            {
+                "name": "pbkdf_with_iters",
+                "description": "Derives a 32-byte key from a password using an explicit iteration count but no external salt. Suitable for contexts where a salt is embedded in or derived from the password itself.",
+                "params": [
+                    {"name": "password", "description": "The user-supplied password bytes."},
+                    {"name": "iters",    "description": "Number of PBKDF iterations."}
+                ]
+            },
+            {
+                "name": "simple_pbkdf",
+                "description": "Derives a 32-byte key from a password using library defaults for both salt and iteration count. Provided for convenience in low-security or testing contexts; prefer salted_pbkdf or pbkdf in production.",
+                "params": [
+                    {"name": "password", "description": "The user-supplied password bytes."}
+                ]
+            }
+        ]
+    },
+    "rng_api": {
+        "sz_consts": [
+            {"name": "RNG_SEED_SZ", "description": "Size in bytes of the seed used to initialize an AloeRng instance."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_RNG_SEED", "description": "Zero-initialized RNG seed buffer. Provided as a convenience allocation target to fill before constructing an AloeRng; a zero seed must never be used directly."}
+        ],
+        "byte_aliases": [
+            {"name": "RngSeed", "description": "A 32-byte seed value used to initialize an AloeRng. Must be sourced from a cryptographically secure entropy source (e.g. getrandom)."}
+        ],
+        "structs": [
+            {
+                "name": "AloeRng",
+                "description": "A deterministic, seedable pseudorandom number generator based on ChaCha20. Supports independent parallel streams via the stream parameter and arbitrary seek via word_pos, enabling reproducible and partitioned randomness across subsystems.",
+                "fields": [
+                    {"name": "seed",     "description": "The 32-byte seed that initializes the ChaCha20 key schedule. Determines the entire output sequence for a given stream and position."},
+                    {"name": "stream",   "description": "Stream identifier (ChaCha20 nonce component). Different stream values produce independent, non-overlapping output sequences from the same seed. Use distinct stream values to partition randomness between subsystems."},
+                    {"name": "word_pos", "description": "Current 128-bit word position within the ChaCha20 output stream. Allows seeking to an arbitrary position for parallel or resumed generation."}
+                ]
+            },
+            {
+                "name": "AloeRngU8Result",
+                "description": "Result of generating a single random u8 value. Returns the updated RNG state alongside the generated byte, supporting a functional update pattern.",
+                "fields": [
+                    {"name": "_self", "description": "The updated AloeRng state after generating the value."},
+                    {"name": "next",  "description": "The generated random u8 value."}
+                ]
+            },
+            {
+                "name": "AloeRngU32Result",
+                "description": "Result of generating a single random u32 value.",
+                "fields": [
+                    {"name": "_self", "description": "The updated AloeRng state after generating the value."},
+                    {"name": "next",  "description": "The generated random u32 value."}
+                ]
+            },
+            {
+                "name": "AloeRngU64Result",
+                "description": "Result of generating a single random u64 value.",
+                "fields": [
+                    {"name": "_self", "description": "The updated AloeRng state after generating the value."},
+                    {"name": "next",  "description": "The generated random u64 value."}
+                ]
+            },
+            {
+                "name": "AloeRngU128Result",
+                "description": "Result of generating a single random u128 value.",
+                "fields": [
+                    {"name": "_self", "description": "The updated AloeRng state after generating the value."},
+                    {"name": "next",  "description": "The generated random u128 value."}
+                ]
+            }
+        ],
+        "traits": [
+            {
+                "name": "IAloeRng",
+                "description": "Builder and constructor interface for AloeRng. Allows configuration of seed, stream, and word position before use, supporting both fresh construction and fine-grained stream partitioning.",
+                "functions": [
+                    {"name": "with_seed",     "description": "Replaces the current seed and resets the RNG state accordingly. Returns a reference to self to support method chaining.", "params": [{"name": "seed", "description": "A new 32-byte seed value from a CSPRNG."}]},
+                    {"name": "with_stream",   "description": "Sets the stream identifier, producing a logically independent output sequence from the same seed. Returns a reference to self for chaining. Use distinct stream values to partition randomness between concurrent subsystems without seed duplication.", "params": [{"name": "stream", "description": "A u64 stream identifier. Each unique value yields a non-overlapping output sequence."}]},
+                    {"name": "with_word_pos", "description": "Seeks the RNG to an arbitrary word position in the output stream. Useful for parallel generation or resuming from a known offset. Returns a reference to self for chaining.", "params": [{"name": "word_pos", "description": "The 128-bit word offset to seek to within the ChaCha20 output stream."}]},
+                    {"name": "new",           "description": "Constructs a new AloeRng from the given seed, using default stream (0) and word position (0).", "params": [{"name": "seed", "description": "A 32-byte seed from a cryptographically secure entropy source."}]}
+                ]
+            }
+        ]
+    },
+    "recovery_api": {
+        "sz_consts": [
+            {"name": "RECOVERY_PRIVKEY_SZ",   "description": "Size in bytes of the recoverer's private key component. Fixed at 32 bytes."},
+            {"name": "RECOVERABLE_CIPHER_SZ", "description": "Size in bytes of the KEM ciphertext stored in a RecoveryKey. Aliased from MLKEM_512_CIPHER_SZ."}
+        ],
+        "empty_consts": [
+            {"name": "EMPTY_RECOVERY_PRIVKEY", "description": "Zero-initialized recovery private key buffer. Provided as a convenience allocation target to fill before constructing a RecoverableSecret; a zero key must never be used directly."}
+        ],
+        "byte_aliases": [
+            {"name": "RecoverySecret", "description": "A 32-byte value representing either the recoverer's private key component or the derived recoverable secret. All instances must be sourced from a cryptographically secure entropy source or derived via the recovery hash construction."},
+            {"name": "RecoveryCipher", "description": "A KEM ciphertext produced during secret creation. Held by the recoverer and presented to the authorizer to obtain the shared secret needed for recovery. Treat as non-secret but integrity-sensitive."}
+        ],
+        "structs": [
+            {
+                "name": "RecoveryKey",
+                "description": "The recoverer's credential bundle, produced during secret creation and held exclusively by the recoverer. Contains both the KEM ciphertext to present to the authorizer and the private key component to complete recovery. Neither field alone is sufficient to recover the secret.",
+                "fields": [
+                    {"name": "cipher", "description": "The ML-KEM-512 ciphertext encapsulating the authorizer's shared secret contribution. Presented to the authorizer during recovery to obtain the decapsulated secret. Non-secret but must be stored faithfully — loss is unrecoverable."},
+                    {"name": "secret", "description": "The recoverer's 32-byte private key component. Combined with the authorizer's decapsulated secret to derive the final recovered secret. Must be kept confidential by the recoverer."}
+                ]
+            },
+            {
+                "name": "RecoverableSecret",
+                "description": "The output of secret creation. Contains the derived secret and the recovery key needed to reconstruct it later. The secret holder retains the secret field for use; the recovery_key is handed to the recoverer for custody.",
+                "fields": [
+                    {"name": "secret",       "description": "The 32-byte derived secret, produced by hashing the KEM shared secret together with the recoverer's private key component. This is the value the secret holder uses."},
+                    {"name": "recovery_key", "description": "The RecoveryKey bundle to be handed to the recoverer. Contains everything the recoverer needs to initiate and complete recovery given authorizer cooperation."}
+                ]
+            }
+        ],
+        "traits": [
+            {
+                "name": "IRecoverableSecret",
+                "description": "Construction and recovery interface for RecoverableSecret. Separates the creation path (requires authorizer public key) from the recovery path (requires authorizer cooperation and recoverer private key), ensuring neither party can recover the secret unilaterally.",
+                "functions": [
+                    {
+                        "name": "create",
+                        "description": "Generates a new recoverable secret bound to the given authorizer. Internally generates a fresh KEM PRK seed and recoverer private key, encapsulates against the authorizer's public key, and derives the secret via H(kem_secret || recovery_private_key). The authorizer learns nothing at creation time.",
+                        "params": [
+                            {"name": "authorizer", "description": "The authorizer's ML-KEM-512 encapsulator (public key wrapper). Only the public key is required; the authorizer's private key is not involved in secret creation."},
+                            {"name": "recovery_secret", "description": "A pre generated 32-byte secret to use for the recovery key secret"},
+                            {"name": "prk_seed", "description": "A 32-byte random key to seed kyber encapsulation"}
+                        ]
+                    },
+                    {
+                        "name": "recover",
+                        "description": "Reconstructs the secret from an authorizer-supplied decapsulated shared secret and the recoverer's private key component. Mirrors the derivation in create: H(authorization || recovery_secret). Both inputs are required; neither alone is sufficient.",
+                        "params": [
+                            {"name": "authorization",   "description": "The MlKemSecret obtained by the authorizer decapsulating the cipher from the RecoveryKey. Represents the authorizer's explicit cooperation in the recovery event."},
+                            {"name": "recovery_secret", "description": "The recoverer's private key component from RecoveryKey.secret. Must match the value generated at creation time."}
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

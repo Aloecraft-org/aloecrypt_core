@@ -10,6 +10,7 @@ pub mod hash;
 pub mod kem;
 pub mod password;
 pub mod pkdf;
+pub mod recovery;
 pub mod rng;
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //
