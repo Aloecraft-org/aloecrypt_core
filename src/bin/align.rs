@@ -2,18 +2,8 @@
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![allow(warnings)]
 
-
-// use ml_dsa::{
-    //     ExpandedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey, VerifyingKey,
-    //     signature::{Keypair, Signer, Verifier},
-    // };
-    
-    // use ml_kem::{
-        //     B32, Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey, ExpandedKeyEncoding,
-        //     KeyExport, MlKem512, MlKem768, MlKem1024, SharedKey, array::Array,
-        // };
         
-        use rand_core::{Rng, RngCore};
+use rand_core::{Rng, RngCore};
         
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
@@ -223,15 +213,18 @@ fn main() {
     rng.fill_bytes(&mut recovery_secret);
     rng.fill_bytes(&mut prk_seed);
 
+    let secret_ikm = simple_hash("secret_ikm".as_bytes());
+    let secret_domain = "test domain for recoverable secret";
+
     // Secret holder takes authorizer keypair
     let authorizer_keypair = MlKem512Keypair::from_seed(&authorizer_private_seed);
-    let recoverable_secret = RecoverableSecret::create(authorizer_keypair.get_encapsulator(), recovery_secret, prk_seed);
+    let recoverable_secret = RecoverableSecret::create(authorizer_keypair.get_encapsulator(), recovery_secret, prk_seed, &secret_ikm, secret_domain);
 
     // Recovery key holder keeps this
     let recovery_key = recoverable_secret.recovery_key;
 
     // Authorizer authorizes with recovery public key
-    let recovered_authorization = authorizer_keypair.decapsulate(&recovery_key.cipher);
+    let recovered_authorization = recovery::authorize_recovery(authorizer_keypair, &recovery_key.cipher, recovery_key.mac, &secret_ikm, secret_domain); 
 
     // Recoverer combines private key to recover secret
     let recovered_secret = RecoverableSecret::recover(recovered_authorization, &recovery_key.secret);

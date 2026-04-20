@@ -1,7 +1,8 @@
 // src/password.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
-use super::core_api::*;
+use super::aloecrypt_api::*;
 use super::password_api::*;
+use core::cmp;
 use super::*;
 
 pub const EMPTY_PASSWORD_ENCRYPTED_CHUNK: PasswordEncryptedChunk =
@@ -10,7 +11,7 @@ pub const EMPTY_PASSWORD_UNENCRYPTED_CHUNK: PasswordUnencryptedChunk =
     [0u8; PASSWORD_CIPHER_CHUNK_SZ as usize];
 
 impl IPasswordCipher for PasswordCipher {
-    fn new(data: &[u8], key: PbkdfKey, nonce: PasswordNonce) -> Self {
+    fn new(data: &[u8], key: PkdfKey, nonce: PasswordNonce) -> Self {
         Self {
             key,
             nonce,
@@ -141,7 +142,7 @@ pub fn password_encrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Encryp
     let mut unencrypted_chunk = EMPTY_PASSWORD_UNENCRYPTED_CHUNK;
 
     let remaining = data.len().saturating_sub(offset);
-    let len_to_copy = core::cmp::min(remaining, cipher.chunk_sz as usize);
+    let len_to_copy = cmp::min(remaining, cipher.chunk_sz as usize);
 
     if len_to_copy > 0 {
         unencrypted_chunk[..len_to_copy].copy_from_slice(&data[offset..offset + len_to_copy]);
@@ -167,7 +168,7 @@ pub fn password_decrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Decryp
     let mut encrypted_chunk = EMPTY_PASSWORD_ENCRYPTED_CHUNK;
 
     let remaining = data.len().saturating_sub(offset);
-    let len_to_copy = core::cmp::min(remaining, encrypted_chunk_sz);
+    let len_to_copy = cmp::min(remaining, encrypted_chunk_sz);
 
     if len_to_copy > 0 {
         encrypted_chunk[..len_to_copy].copy_from_slice(&data[offset..offset + len_to_copy]);

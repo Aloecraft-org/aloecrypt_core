@@ -1,7 +1,176 @@
 {
-    "core_api" : {
+    "aloecrypt_api" : {
         "sz_consts" : [
-            {"name" : "ENCRYPTED_TAG_SZ",             "value" :   "16"}
+            {"name" : "ENCRYPTED_TAG_SZ",     "value" :   "16"},
+            {"name" : "TIMESTAMP_SZ",         "value" :    "8"},
+            {"name" : "TIMEZONE_STR_SZ",      "value" :   "32"},
+            {"name" : "ALOECRYPT_ADDRESS_SZ", "value" :   "32"}
+        ],
+        "byte_aliases" : [
+            { "name" : "AloecryptAddress", "length": "ALOECRYPT_ADDRESS_SZ"},
+            { "name" : "Timestamp",        "length": "TIMESTAMP_SZ"},
+            { "name" : "Timezone",         "length": "TIMEZONE_STR_SZ"},
+            { "name" : "B256",             "length": "256"}
+        ],
+        "empty_consts" : [
+            { "name" : "EMPTY_ALOECRYPT_ADDRESS",      "size": "ALOECRYPT_ADDRESS_SZ"}
+        ],
+        "structs" : [
+            {
+                "name":"VarChar255", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [ 
+                    {"name": "value", "type" : "[u8;256]"} 
+                ]
+            },
+            {
+                "name":"VarByte255", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [ 
+                    {"name": "value", "type" : "[u8;256]"} 
+                ]
+            },
+            {
+                "name":"AloecryptAttribute", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [
+                    {"name": "attribute_type", "type": "u32"},
+                    {"name": "name",  "type": "VarChar255"},
+                    {"name": "value", "type": "VarByte255"} 
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name" : "VarChar",
+                "functions": [
+                    {"name" : "empty", "return": "Self", "params": []},
+                    {"name" : "from_str", "return": "Self", "params": [{"name":"input", "type": "&str"}]},
+                    {"name" : "to_str", "instance" : "&self", "return": "&str", "params" : [] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&B256", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "varchar_bytes", "type":"&B256"} ] }
+                ]
+            },
+            {
+                "name" : "VarByte",
+                "functions": [
+                    {"name" : "empty", "return": "Self", "params": []},
+                    {"name" : "from_byte_arr", "return": "Self", "params": [{"name":"input", "type": "&[u8]"}]},
+                    {"name" : "to_byte_arr", "instance" : "&self", "return": "&[u8]", "params" : [] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&B256", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "varchar_bytes", "type":"&B256"} ] }
+                ]
+            },
+            {
+                "name": "AloecryptAddressable",
+                "generics": [],
+                "functions": [
+                    { "name": "addressing_material", "instance": "&self", "params": [], "return": "&[u8]" }
+                ]
+            },
+            {
+                "name": "AloecryptHashable",
+                "generics": [],
+                "functions": [
+                    { "name": "hashing_material", "instance": "&self", "params": [], "return": "&[u8]" }
+                ]
+            }
+        ],
+        "functions": [],
+        "impls" : [
+            {"trait":"VarChar255", "struct":"VarChar"},
+            {"trait":"VarByte255", "struct":"VarByte"}
+        ]
+    },
+    "proof_api": {
+        "sz_consts" : [],
+        "byte_aliases" : [],
+        "structs" : [],
+        "traits" : [],
+        "enums" : [
+            {
+                "name":"AloecryptClaimType",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "repr_type":"u16",
+                "members" : [
+                    {"name":"None",           "discriminant": "0", "default" : "true"},
+                    {"name":"Attribute",      "discriminant": "10"},
+                    {"name":"Validity",       "discriminant": "20"},
+                    {"name":"Permission",     "discriminant": "30"},
+                    {"name":"Authentication", "discriminant": "40"},
+                    {"name":"Invalid",        "discriminant": "65535"}
+                ]
+            },
+            {
+                "name":"AloecryptValidityScope", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "repr_type":"u16",
+                "members" : [
+                    {"name": "None", "discriminant": "0", "default" : "true"},
+                    {"name": "Any", "discriminant": "65535"}
+                ]
+            },
+            {
+                "name":"AloecryptPermissionType",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "repr_type":"u16",
+                "members" : [
+                    {"name": "None", "discriminant": "0", "default" : "true"},
+                    {"name": "Sign", "discriminant": "10"},
+                    {"name": "Verify", "discriminant": "11"},
+                    {"name": "Encapsulate", "discriminant": "20"},
+                    {"name": "Decapsulate", "discriminant": "21"},
+                    {"name": "Encrypt", "discriminant": "30"},
+                    {"name": "Decrypt", "discriminant": "31"},
+                    {"name": "Delegate", "discriminant": "40"},
+                    {"name": "Witness", "discriminant": "41"},
+                    {"name": "Authorize", "discriminant": "42"},
+                    {"name": "Refresh", "discriminant": "50"},
+                    {"name": "Recover", "discriminant": "51"},
+                    {"name": "Read", "discriminant": "60"},
+                    {"name": "Write", "discriminant": "61"},
+                    {"name": "Join", "discriminant": "70"},
+                    {"name": "Activate", "discriminant": "71"},
+                    {"name": "Transfer", "discriminant": "72"},
+                    {"name": "Any", "discriminant": "65535"}
+                ]
+            },
+            {
+                "name":"AloecryptAuthenticationType",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "repr_type":"u16",
+                "members" : [
+                    {"name":"None",     "discriminant":  "0", "default" : "true"},
+                    {"name":"Hmac256" , "discriminant": "10"},
+                    {"name":"Hash256" , "discriminant": "20"},
+                    {"name":"Dsa44"   , "discriminant": "30"},
+                    {"name":"Dsa65"   , "discriminant": "31"},
+                    {"name":"Dsa87"   , "discriminant": "32"},
+                    {"name":"Merkle"  , "discriminant": "40"},
+                    {"name": "Any", "discriminant": "65535"}
+                ]
+            },
+            {
+                "name":"AloecryptAttributeType",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "repr_type":"u16",
+                "members" : [
+                    {"name" : "None",             "discriminant": "0", "default" : "true"},
+                    {"name" : "VarChar255",       "discriminant": "30"},
+                    {"name" : "VarByte255",       "discriminant": "31"},
+                    {"name" : "Bool",             "discriminant": "40"},
+                    {"name" : "Byte",             "discriminant": "41"},
+                    {"name" : "Int",              "discriminant": "42"},
+                    {"name" : "Uint",             "discriminant": "43"},
+                    {"name" : "Float",            "discriminant": "44"},
+                    {"name" : "AloecryptAddress", "discriminant": "50"},
+                    {"name" : "Timestamp",        "discriminant": "60"},
+                    {"name" : "Timezone",         "discriminant": "61"},
+                    {"name" : "Hash256",          "discriminant": "10"},
+                    {"name" : "Hmac256",          "discriminant": "20"},
+                    {"name" : "Invalid", "discriminant": "65535"}
+                ]
+            }
         ]
     },
     "dsa_api" : {
@@ -14,6 +183,7 @@
             {"name":"MLDSA_44_SIGNATURE_SZ", "value":"2420" },
             {"name":"MLDSA_65_SIGNATURE_SZ", "value":"3309" },
             {"name":"MLDSA_87_SIGNATURE_SZ", "value":"4627" },
+            {"name":"MLDSA_VARSIG_SZ", "value":"MLDSA_87_SIGNATURE_SZ + 1" },
             {"name":"MLDSA_MU_SZ", "value":"64" },
             {"name":"MLDSA_MU_RAND_SEED_SZ", "value":"32" },
             {"name":"MLDSA_44_KEYPAIR_SZ", "value":"MLDSA_44_PUBKEY_SZ + MLDSA_SEED_SZ" },
@@ -35,23 +205,32 @@
             {"name":"MlDsaMu",           "length":"MLDSA_MU_SZ"}
         ],
         "empty_consts" : [
-            {"name": "EMPTY_MLDSA_SEED", "size": "MLDSA_SEED_SZ"}
+            { "name" : "EMPTY_MLDSA_SEED",      "size": "MLDSA_SEED_SZ"},
+            { "name" : "EMPTY_MLDSA_44_PUBKEY", "size": "MLDSA_44_PUBKEY_SZ"},
+            { "name" : "EMPTY_MLDSA_65_PUBKEY", "size": "MLDSA_65_PUBKEY_SZ"},
+            { "name" : "EMPTY_MLDSA_87_PUBKEY", "size": "MLDSA_87_PUBKEY_SZ"}
         ],
         "structs" : [
             {"name":"MlDsa44Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa44 Keypair",
                 "fields": [ 
-                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key", "type" : "MlDsa44Pubkey", "description" : "MlDsa44 Public Verifier Key"} ]},
             {"name":"MlDsa65Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa65 Keypair",
                 "fields": [ 
-                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key", "type" : "MlDsa65Pubkey", "description" : "MlDsa65 Public Verifier Key"} ]},
             {"name":"MlDsa87Keypair", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa87 Keypair",
                 "fields": [ 
-                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}, 
+                    {"name":"private_seed", "type": "MlDsaPrivateSeed", "description": "MlDsa44 Private Seed"}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key", "type" : "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]},
             {"name":"MlDsa44Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa44 Verifier",
@@ -64,7 +243,14 @@
             {"name":"MlDsa87Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa87 Verifier",
                 "fields": [ 
-                    {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]}
+                    {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]},
+            {
+                "name":"VarSig", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [ 
+                    {"name": "value", "type" : "[u8;MLDSA_87_SIGNATURE_SZ+1]"} 
+                ]
+            }
         ],
         "traits" : [
 
@@ -142,8 +328,16 @@
                     "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa87Signature) -> bool;",
                     "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa87Signature) -> bool;"
                 ]}
-            ]}
-
+            ]},
+            {
+                "name" : "IVarSig",
+                "functions": [
+                    {"name" : "from_byte_arr", "return": "Self", "params": [{"name":"input", "type": "&[u8]"}]},
+                    {"name" : "to_byte_arr", "instance" : "&self", "return": "&[u8]", "params" : [] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&[u8; MLDSA_VARSIG_SZ]", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "varsig_bytes", "type":"&[u8; MLDSA_VARSIG_SZ]"} ] }
+                ]
+            }
         ],
         "functions" : [], 
         "impls":[
@@ -164,15 +358,21 @@
     },
     "hash_api" : { 
         "sz_consts" : [
-            {"name":"HASH_KEY_256_SZ", "value" : "32"}
+            {"name":"HASH_KEY_256_SZ", "value" : "32"},
+            {"name":"HMAC_KEY_256_SZ", "value" : "32"}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_HASH_KEY_256", "size": "HASH_KEY_256_SZ"},
+            {"name": "EMPTY_HMAC_KEY_256", "size": "HMAC_KEY_256_SZ"}
         ],
         "byte_aliases" : [
-            {"name":"HashKey256",   "length": "HASH_KEY_256_SZ" }
+            {"name":"Hash256",   "length": "HASH_KEY_256_SZ" },
+            {"name":"Hmac256",   "length": "HMAC_KEY_256_SZ" }
         ],
         "functions" : [
             {
                 "name":"hash",        
-                "return" :"HashKey256", 
+                "return" :"Hash256", 
                 "params" : [
                     {"name":"salt", "type": "&[u8]"}, 
                     {"name":"ikm", "type": "&[u8]"}, 
@@ -181,7 +381,7 @@
             },
             {
                 "name":"hmac",        
-                "return" :"HashKey256", 
+                "return" :"Hmac256", 
                 "params" : [
                     {"name":"salt", "type": "&[u8]"}, 
                     {"name":"ikm", "type": "&[u8]"}, 
@@ -190,7 +390,7 @@
             },
             {
                 "name":"salted_hmac", 
-                "return" :"HashKey256", 
+                "return" :"Hmac256", 
                 "params" : [
                     {"name":"salt", "type": "&[u8]"}, 
                     {"name":"ikm", "type": "&[u8]"}
@@ -198,7 +398,7 @@
             },
             {
                 "name":"domain_hmac", 
-                "return" :"HashKey256", 
+                "return" :"Hmac256", 
                 "params" : [
                     {"name":"ikm",  "type": "&[u8]"}, 
                     {"name":"domain_info", "type":"&str"}
@@ -206,7 +406,7 @@
             },
             {
                 "name":"salted_hash", 
-                "return" :"HashKey256", 
+                "return" :"Hash256", 
                 "params" : [
                     {"name":"salt", "type": "&[u8]"}, 
                     {"name":"ikm", "type": "&[u8]"}
@@ -214,7 +414,7 @@
             },
             {
                 "name":"domain_hash", 
-                "return" :"HashKey256", 
+                "return" :"Hash256", 
                 "params" : [
                     {"name":"ikm",  "type": "&[u8]"}, 
                     {"name":"domain_info", "type":" &str"}
@@ -222,14 +422,14 @@
             },
             {
                 "name":"simple_hmac", 
-                "return" :"HashKey256", 
+                "return" :"Hmac256", 
                 "params" : [
                     {"name":"ikm",  "type": "&[u8]"}
                 ] 
             },
             {
                 "name":"simple_hash", 
-                "return" :"HashKey256", 
+                "return" :"Hash256", 
                 "params" : [
                     {"name":"ikm",  "type": "&[u8]"}
                 ] 
@@ -411,7 +611,7 @@
                 "name": "PasswordCipher", 
                 "derives":"Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
             "fields" : [
-                {"name":"key", "type": "PbkdfKey"},
+                {"name":"key", "type": "PkdfKey"},
                 {"name":"nonce", "type": "PasswordNonce"},
                 {"name":"counter", "type": "u32"},
                 {"name":"n_bytes", "type": "u64"},
@@ -445,7 +645,7 @@
                         "return": "Self", 
                         "params" : [ 
                             {"name": "data", "type" : "&[u8]"},
-                            {"name": "key", "type" : "PbkdfKey"},
+                            {"name": "key", "type" : "PkdfKey"},
                             {"name": "nonce", "type" : "PasswordNonce"}
                         ] 
                     }
@@ -469,12 +669,12 @@
             {"name": "EMPTY_PBKDF_KEY",                 "size": "PBKDF_KEY_SZ"}
         ],
         "byte_aliases" : [
-            { "name" : "PbkdfKey",                     "length": "PBKDF_KEY_SZ"}
+            { "name" : "PkdfKey",                     "length": "PBKDF_KEY_SZ"}
         ],
         "functions" : [
             {
                 "name":"pbkdf",            
-                "return":"PbkdfKey",  
+                "return":"PkdfKey",  
                 "params": [
                     {"name":"password", "type": "&[u8]"}, 
                     {"name":"salt", "type": "&[u8]"}, 
@@ -483,21 +683,21 @@
             },
             {
                 "name":"salted_pbkdf",     
-                "return":"PbkdfKey",  
+                "return":"PkdfKey",  
                 "params": [
                     {"name":"password", "type": "&[u8]"}, {"name":"salt", "type": "&[u8]"}    
                 ]
             },
             {
                 "name":"pbkdf_with_iters", 
-                "return":"PbkdfKey",  
+                "return":"PkdfKey",  
                 "params": [
                     {"name":"password", "type": "&[u8]"}, {"name":"iters", "type": "u32"}     
                 ]
             },
             {
                 "name":"simple_pbkdf",     
-                "return":"PbkdfKey",  
+                "return":"PkdfKey",  
                 "params": [
                     {"name":"password", "type": "&[u8]"}
                 ]
@@ -580,6 +780,7 @@
                 "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
                 "fields": [
                     {"name": "cipher", "type": "RecoveryCipher", "description": "KEM ciphertext presented to authorizer for decapsulation"},
+                    {"name": "mac",    "type": "Hmac256",     "description": "HMAC presented to authorizer to authenticate request"},
                     {"name": "secret", "type": "RecoverySecret", "description": "Recoverer private key component"}
                 ]
             },
@@ -602,7 +803,9 @@
                         "params": [
                             {"name": "authorizer", "type": "MlKem512Encapsulator"},
                             {"name": "recovery_secret", "type": "RecoverySecret"},
-                            {"name": "prk_seed", "type": "MlKemPrkSeed"}
+                            {"name": "prk_seed", "type": "MlKemPrkSeed"},
+                            {"name": "ikm",         "type": "&[u8]"},
+                            {"name": "domain_info", "type": "&str"}
                         ]
                     },
                     {
@@ -616,8 +819,71 @@
                 ]
             }
         ],
+        "functions" : [
+            {
+                "name" : "authorize_recovery",
+                "return": "MlKemSecret",
+                "params" : [
+                    {"name": "authorizer",  "type": "MlKem512Keypair", "description": "Authorizer KEM decapsulator"},
+                    {"name": "cipher",      "type": "&RecoveryCipher", "description": "KEM ciphertext presented to authorizer for decapsulation"},
+                    {"name": "mac",         "type": "Hmac256",      "description": "HMAC presented to authorizer to authenticate request"},
+                    {"name": "ikm",         "type": "&[u8]",           "description": "Input Key Material for cipher mac"},
+                    {"name": "domain_info", "type": "&str",            "description": "Domain info for cipher mac"}
+                ]
+            }
+        ],
         "impls": [
             {"trait": "IRecoverableSecret", "struct": "RecoverableSecret"}
+        ]
+    },
+    "totp_api" : {
+        "enums" : [
+            {
+                "name":"TotpAlgorithm",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "repr_type":"u16",
+                "members" : [
+                    {"name":"UNKNOWN",   "discriminant":  "0", "default" :  "true"},
+                    {"name":"SHA1",      "discriminant":  "1", "default" : "false"},
+                    {"name":"SHA256",    "discriminant":  "2", "default" : "false"},
+                    {"name":"SHA512",    "discriminant":  "3", "default" : "false"},
+                    {"name":"SHA3_256",  "discriminant":  "4", "default" : "false"},
+                    {"name":"KECCAK256", "discriminant":  "5", "default" : "false"}
+                ]
+            }
+        ],
+        "sz_consts" : [],
+        "empty_consts" : [],
+        "byte_aliases" : [],
+        "structs" : [
+            {
+                "name": "TotpCredential",
+                "description":"",
+                "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "fields": [
+                    {"name": "secret", "type": "VarByte255", "description":""},
+                    {"name": "step_seconds", "type": "u32", "description":""},
+                    {"name": "digits", "type": "u8", "description":""},
+                    {"name": "algorithm", "type": "TotpAlgorithm", "description":""},
+                    {"name": "issuer", "type": "VarChar255", "description":""},
+                    {"name": "context", "type": "VarChar255", "description":""}
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name":"ITotpCredential",
+                "generics": [],
+                "functions": [
+                    {"name" : "error",    "return": "Self", "params" : [ {"name": "message", "type":"&str"} ] },
+                    {"name" : "invalid",  "return": "Self", "params" : [] },
+                    {"name" : "from_uri", "return": "Self", "params" : [ {"name": "uri_str", "type":"&str"} ] },
+                    {"name" : "generate", "instance" : "&self", "return": "[i8; 8]", "params" : [ {"name": "time", "type":"u64"} ]}
+                ]
+            }
+        ],
+        "impls" : [
+            {"trait":"ITotpCredential", "struct":"TotpCredential"}
         ]
     }
 }

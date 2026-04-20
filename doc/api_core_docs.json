@@ -1,7 +1,169 @@
 {
-    "core_api": {
+    "aloecrypt_api": {
         "sz_consts": [
-            {"name": "ENCRYPTED_TAG_SZ", "description": "Size in bytes of the authentication tag appended to each encrypted chunk by the AEAD cipher (GCM/Poly1305). This overhead must be accounted for when sizing encrypted output buffers."}
+            {"name": "ENCRYPTED_TAG_SZ", "description": "Size in bytes of the authentication tag appended to each encrypted chunk by the AEAD cipher (GCM/Poly1305). This overhead must be accounted for when sizing encrypted output buffers."},
+            {"name" : "TIMESTAMP_SZ",         "description" : ""},
+            {"name" : "TIMEZONE_STR_SZ",      "description" : ""},
+            {"name" : "ALOECRYPT_ADDRESS_SZ", "description" : ""}
+        ],
+        "byte_aliases" : [
+            { "name" : "AloecryptAddress", "description": ""},
+            { "name" : "Timestamp",        "description": ""},
+            { "name" : "Timezone",         "description": ""},
+            { "name" : "B256",             "description": ""}
+        ],
+        "structs" : [
+            {
+                "name":"VarChar255", 
+                "description": "",
+                "fields": [ 
+                    {"name": "value", "description": ""} 
+                ]
+            },
+            {
+                "name":"VarByte255", 
+                "description": "",
+                "fields": [ 
+                    {"name": "value", "description": ""} 
+                ]
+            },
+            {
+                "name":"AloecryptAttribute", 
+                "description": "",
+                "fields": [ 
+                    {"name": "attribute_type", "description": ""} ,
+                    {"name": "name", "description": ""} ,
+                    {"name": "value", "description": ""} 
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name" : "VarChar",
+                "description": "",
+                "functions": [
+                    {"name" : "empty", "description": ""},
+                    {"name" : "from_str", "description": ""},
+                    {"name" : "to_str", "description": ""},
+                    {"name" : "pack_bytes", "description": ""},
+                    {"name" : "unpack_bytes", "description": "" }
+                ]
+            },
+            {
+                "name" : "VarByte",
+                "description": "",
+                "functions": [
+                    {"name" : "empty", "description": ""},
+                    {"name" : "from_byte_arr", "description": ""},
+                    {"name" : "to_byte_arr", "description": ""},
+                    {"name" : "pack_bytes", "description": ""},
+                    {"name" : "unpack_bytes", "description": "" }
+                ]
+            },
+            {
+                "name": "AloecryptAddressable",
+                "description": "",
+                "functions": [
+                    { 
+                        "name": "addressing_material", 
+                        "description": "", 
+                        "params": []
+                    }
+                ]
+            },
+            {
+                "name": "AloecryptHashable",
+                "description": "",
+                "functions": [
+                    { 
+                        "name": "hashing_material", 
+                        "description": "", 
+                        "params": []
+                    }
+                ]
+            }
+        ]
+    },
+    "proof_api": {
+        "enums" : [
+            {
+                "name":"AloecryptClaimType",
+                "description": "",
+                "members" : [
+                    {"name":"None",           "description": ""},
+                    {"name":"Attribute",      "description": ""},
+                    {"name":"Validity",       "description": ""},
+                    {"name":"Permission",     "description": ""},
+                    {"name":"Authentication", "description": ""},
+                    {"name":"Invalid", "description": ""}
+                ]
+            },
+                        {
+                "name":"AloecryptValidityScope",
+                "description": "",
+                "members" : [
+                    {"name":"None",          "description": ""},
+                    {"name":"Any",           "description": ""}
+                ]
+            },
+            {
+                "name":"AloecryptPermissionType",
+                "description": "",
+                "members" : [
+                    {"name": "None", "description": ""},
+                    {"name": "Sign", "description": ""},
+                    {"name": "Verify", "description": ""},
+                    {"name": "Encapsulate", "description": ""},
+                    {"name": "Decapsulate", "description": ""},
+                    {"name": "Encrypt", "description": ""},
+                    {"name": "Decrypt", "description": ""},
+                    {"name": "Delegate", "description": ""},
+                    {"name": "Witness", "description": ""},
+                    {"name": "Authorize", "description": ""},
+                    {"name": "Refresh", "description": ""},
+                    {"name": "Recover", "description": ""},
+                    {"name": "Read", "description": ""},
+                    {"name": "Write", "description": ""},
+                    {"name": "Join", "description": ""},
+                    {"name": "Activate", "description": ""},
+                    {"name": "Transfer", "description": ""},
+                    {"name": "Any", "description": ""}
+                ]
+            },
+            {
+                "name":"AloecryptAuthenticationType",
+                "description": "",
+                "members" : [
+                    {"name":"None",     "description": ""},
+                    {"name":"Hmac256" , "description": ""},
+                    {"name":"Hash256" , "description": ""},
+                    {"name":"Dsa44"   , "description": ""},
+                    {"name":"Dsa65"   , "description": ""},
+                    {"name":"Dsa87"   , "description": ""},
+                    {"name":"Merkle"  , "description": ""},
+                    {"name":"Any",     "description": ""}
+                ]
+            },
+            {
+                "name":"AloecryptAttributeType",
+                "description": "",
+                "members" : [
+                    {"name" : "None",             "description": ""},
+                    {"name" : "VarChar255",       "description": ""},
+                    {"name" : "VarByte255",       "description": ""},
+                    {"name" : "Bool",             "description": ""},
+                    {"name" : "Byte",             "description": ""},
+                    {"name" : "Int",              "description": ""},
+                    {"name" : "Uint",             "description": ""},
+                    {"name" : "Float",            "description": ""},
+                    {"name" : "AloecryptAddress", "description": ""},
+                    {"name" : "Timestamp",        "description": ""},
+                    {"name" : "Timezone",         "description": ""},
+                    {"name" : "Hash256",          "description": ""},
+                    {"name" : "Hmac256",          "description": ""},
+                    {"name" : "Invalid",          "description": ""}
+                ]
+            }
         ]
     },
     "dsa_api": {
@@ -13,6 +175,7 @@
             {"name": "MLDSA_44_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-44."},
             {"name": "MLDSA_65_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-65."},
             {"name": "MLDSA_87_SIGNATURE_SZ",  "description": "Size in bytes of a detached signature produced by ML-DSA-87."},
+            {"name": "MLDSA_VARSIG_SZ",        "description": ""},
             {"name": "MLDSA_MU_SZ",            "description": "Size in bytes of the message representative mu, the internal hash of the message used during signing and verification."},
             {"name": "MLDSA_MU_RAND_SEED_SZ",  "description": "Size in bytes of the randomness seed used during computation of mu, providing hedged signing."},
             {"name": "MLDSA_44_KEYPAIR_SZ",    "description": "Total size in bytes of a serialized ML-DSA-44 keypair (private seed concatenated with public key)."},
@@ -34,14 +197,22 @@
             {"name": "MlDsaMu",            "description": "Message representative produced by hashing the message (and optional context) prior to signing. Intermediate value used internally by the ML-DSA algorithm."}
         ],
         "empty_consts": [
-            {"name": "EMPTY_MLDSA_SEED", "description": "Zero-initialized ML-DSA private seed. Provided as a convenient stack-allocated buffer to fill before keypair derivation; must never be used as an actual key."}
+            {"name": "EMPTY_MLDSA_SEED", "description": "Zero-initialized ML-DSA private seed. Provided as a convenient stack-allocated buffer to fill before keypair derivation; must never be used as an actual key."},
+            {"name": "EMPTY_MLDSA_44_PUBKEY", "description": "Zero-initialized ML-DSA-44 public key."},
+            {"name": "EMPTY_MLDSA_65_PUBKEY", "description": "Zero-initialized ML-DSA-65 public key."},
+            {"name": "EMPTY_MLDSA_87_PUBKEY", "description": "Zero-initialized ML-DSA-87 public key."}
+
+
         ],
+        
         "structs": [
             {
                 "name": "MlDsa44Keypair",
                 "description": "An ML-DSA-44 keypair holding both the private seed and the derived public key. The security level targets NIST Category 2. Use for signing operations where moderate signature size and high performance are preferred.",
                 "fields": [
-                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-44 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-44 signing key is derived. Keep confidential; exposure allows signature forgery."}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key",   "description": "Derived ML-DSA-44 public key. May be published or transmitted to verifiers."}
                 ]
             },
@@ -49,7 +220,9 @@
                 "name": "MlDsa65Keypair",
                 "description": "An ML-DSA-65 keypair holding both the private seed and the derived public key. Targets NIST Category 3, providing a higher security margin than ML-DSA-44 at the cost of larger key and signature sizes.",
                 "fields": [
-                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-65 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-65 signing key is derived. Keep confidential; exposure allows signature forgery."}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key",   "description": "Derived ML-DSA-65 public key. May be published or transmitted to verifiers."}
                 ]
             },
@@ -57,7 +230,9 @@
                 "name": "MlDsa87Keypair",
                 "description": "An ML-DSA-87 keypair holding both the private seed and the derived public key. Targets NIST Category 5, the highest security level, with the largest key and signature sizes.",
                 "fields": [
-                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-87 signing key is derived. Keep confidential; exposure allows signature forgery."},
+                    {"name": "private_seed", "description": "Secret 32-byte seed from which the full ML-DSA-87 signing key is derived. Keep confidential; exposure allows signature forgery."}
+                ],
+                "deprecated_fields": [ 
                     {"name": "public_key",   "description": "Derived ML-DSA-87 public key. May be published or transmitted to verifiers."}
                 ]
             },
@@ -80,6 +255,13 @@
                 "description": "A standalone ML-DSA-87 verifier holding only the public key. Share this with parties that need to verify signatures but must not have access to the private seed.",
                 "fields": [
                     {"name": "public_key", "description": "ML-DSA-87 public key used exclusively for signature verification."}
+                ]
+            },
+            {
+                "name": "VarSig",
+                "description": "",
+                "fields": [
+                    {"name": "value", "description": ""}
                 ]
             }
         ],
@@ -170,15 +352,43 @@
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_87_SIGNATURE_SZ length."}
                     ]}
                 ]
+            },
+            {
+                "name" : "IVarSig",
+                "description": "",
+                "functions": [
+                    {
+                        "name" : "from_byte_arr", 
+                        "description": "", 
+                        "params" : [
+                            {"name":"input", "description": ""}
+                        ]
+                    },
+                    {"name" : "to_byte_arr",   "description": "", "params" : [] },
+                    {"name" : "pack_bytes",    "description": "", "params" : [] },
+                    {
+                        "name" : "unpack_bytes",  
+                        "description": "", 
+                        "params" : [ 
+                            {"name": "varsig_bytes", "description":""} 
+                        ] 
+                    }
+                ]
             }
         ]
     },
     "hash_api": {
         "sz_consts": [
-            {"name": "HASH_KEY_256_SZ", "description": "Size in bytes of a 256-bit hash or HMAC output."}
+            {"name": "HASH_KEY_256_SZ", "description": "Size in bytes of a 256-bit hash output."},
+            {"name": "HMAC_KEY_256_SZ", "description": "Size in bytes of a 256-bit HMAC output."}
         ],
         "byte_aliases": [
-            {"name": "HashKey256", "description": "A 256-bit (32-byte) hash or HMAC digest. Used as a general-purpose key derivation or integrity output."}
+            {"name": "Hash256", "description": "A 256-bit (32-byte) hash digest. Used as a general-purpose key derivation or integrity output."},
+            {"name": "Hmac256", "description": "A 256-bit (32-byte) HMAC digest. Used as a general-purpose key derivation or integrity output."}
+        ],
+        "empty_consts" : [
+            {"name": "EMPTY_HASH_KEY_256", "description": ""},
+            {"name": "EMPTY_HMAC_KEY_256", "description": ""}
         ],
         "functions": [
             {
@@ -595,6 +805,7 @@
                 "description": "The recoverer's credential bundle, produced during secret creation and held exclusively by the recoverer. Contains both the KEM ciphertext to present to the authorizer and the private key component to complete recovery. Neither field alone is sufficient to recover the secret.",
                 "fields": [
                     {"name": "cipher", "description": "The ML-KEM-512 ciphertext encapsulating the authorizer's shared secret contribution. Presented to the authorizer during recovery to obtain the decapsulated secret. Non-secret but must be stored faithfully — loss is unrecoverable."},
+                    {"name": "mac",    "description": "HMAC presented to authorizer to authenticate request"},
                     {"name": "secret", "description": "The recoverer's 32-byte private key component. Combined with the authorizer's decapsulated secret to derive the final recovered secret. Must be kept confidential by the recoverer."}
                 ]
             },
@@ -616,9 +827,11 @@
                         "name": "create",
                         "description": "Generates a new recoverable secret bound to the given authorizer. Internally generates a fresh KEM PRK seed and recoverer private key, encapsulates against the authorizer's public key, and derives the secret via H(kem_secret || recovery_private_key). The authorizer learns nothing at creation time.",
                         "params": [
-                            {"name": "authorizer", "description": "The authorizer's ML-KEM-512 encapsulator (public key wrapper). Only the public key is required; the authorizer's private key is not involved in secret creation."},
+                            {"name": "authorizer",      "description": "The authorizer's ML-KEM-512 encapsulator (public key wrapper). Only the public key is required; the authorizer's private key is not involved in secret creation."},
                             {"name": "recovery_secret", "description": "A pre generated 32-byte secret to use for the recovery key secret"},
-                            {"name": "prk_seed", "description": "A 32-byte random key to seed kyber encapsulation"}
+                            {"name": "prk_seed",        "description": "A 32-byte random key to seed kyber encapsulation"},
+                            {"name": "ikm",             "description": "Input Key Material for cipher mac"},
+                            {"name": "domain_info",     "description": "Domain info for cipher mac"}
                         ]
                     },
                     {
@@ -631,6 +844,66 @@
                     }
                 ]
             }
+        ],
+        "functions": [
+            {
+                "name": "authorize_recovery",
+                "description": "",
+                "params": [
+                    {"name": "authorizer",  "description": "Authorizer KEM decapsulator"},
+                    {"name": "cipher",      "description": "KEM ciphertext presented to authorizer for decapsulation"},
+                    {"name": "mac",         "description": "HMAC presented to authorizer to authenticate request"},
+                    {"name": "ikm",         "description": "Input Key Material for cipher_mac"},
+                    {"name": "domain_info", "description": "Domain info for cipher mac"}
+                ]
+            }
         ]
+
+    },
+    "totp_api" : {
+        "enums" : [
+            {
+                "name":"TotpAlgorithm",
+                "description" : "",
+                "members" : [
+                    {"name":"UNKNOWN",   "description":  ""},
+                    {"name":"SHA1",      "description":  ""},
+                    {"name":"SHA256",    "description":  ""},
+                    {"name":"SHA512",    "description":  ""},
+                    {"name":"SHA3_256",  "description":  ""},
+                    {"name":"KECCAK256", "description":  ""}
+                ]
+            }
+        ],
+        "sz_consts" : [],
+        "empty_consts" : [],
+        "byte_aliases" : [],
+        "structs" : [
+            {
+                "name": "TotpCredential",
+                "description":"",
+                "fields": [
+                    {"name": "secret",       "description":""},
+                    {"name": "step_seconds", "description":""},
+                    {"name": "digits",       "description":""},
+                    {"name": "algorithm",    "description":""},
+                    {"name": "issuer",       "description":""},
+                    {"name": "context",      "description":""}
+                ]
+            }
+        ],
+        "traits" : [
+            {
+                "name":"ITotpCredential",
+                "description":"",
+                "functions": [
+                    {"name" : "error",    "description" : "", "params" : [ {"name": "message", "description" : ""} ] },
+                    {"name" : "invalid",  "description" : "", "params" : [] },
+                    {"name" : "from_uri", "description" : "", "params" : [ {"name": "uri_str", "description" : ""} ] },
+                    {"name" : "generate", "description" : "", "params" : [ {"name": "time", "description" : ""} ]}
+                ]
+            }
+        ],
+        "impls" : []
     }
 }

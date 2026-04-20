@@ -9,7 +9,7 @@ use sha3::{
 
 pub const PBKDF_DEFAULT_ITERS: u32 = 10;
 
-pub fn pbkdf(password: &[u8], salt: &[u8], iters: u32) -> PbkdfKey {
+pub fn pbkdf(password: &[u8], salt: &[u8], iters: u32) -> PkdfKey {
     let mut state = EMPTY_PBKDF_KEY;
     let mut h = Shake256::default();
     h.update(password);
@@ -23,17 +23,18 @@ pub fn pbkdf(password: &[u8], salt: &[u8], iters: u32) -> PbkdfKey {
     state
 }
 
-pub fn salted_pbkdf(password: &[u8], salt: &[u8]) -> PbkdfKey {
+pub fn salted_pbkdf(password: &[u8], salt: &[u8]) -> PkdfKey {
     pbkdf(password, salt, PBKDF_DEFAULT_ITERS)
 }
 
-pub fn pbkdf_with_iters(password: &[u8], iters: u32) -> PbkdfKey {
+pub fn pbkdf_with_iters(password: &[u8], iters: u32) -> PkdfKey {
     pbkdf(password, b"", iters)
 }
 
-pub fn simple_pbkdf(password: &[u8]) -> PbkdfKey {
+pub fn simple_pbkdf(password: &[u8]) -> PkdfKey {
     pbkdf(password, b"", PBKDF_DEFAULT_ITERS)
 }
+
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //
 // Licensed under the Apache License, Version 2.0 (the License);

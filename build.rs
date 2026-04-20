@@ -63,26 +63,138 @@ fn generate_functions(out: &mut File, value: &serde_json::Value, namespace: &str
 fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
     let indent = "    ";
 
-    if let Some(enums) = value.as_object() {
-        for key in enums.keys() {
+    if let Some(enums) = value.as_array() {
+        for enum_entry in enums {
             writeln!(out);
-            let enum_entry = enums.get(key).unwrap();
-            writeln!(out, "    #[repr({})]", enum_entry["repr_type"]).unwrap();
-            writeln!(out, "    pub enum {} {{", key).unwrap();
-            writeln!(out);
+            if let Some(derives) = enum_entry["derives"].as_str() {
+                writeln!(out, "{}#[derive({})]", indent, derives).unwrap();
+            }
+            writeln!(out, "{}#[repr(transparent)]", indent).unwrap();
+            writeln!(out, "{}pub struct {}(pub {});", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+                enum_entry["repr_type"].as_str().unwrap()
+            ).unwrap();
 
+            writeln!(out);
+            writeln!(out, "{}#[derive(Debug, Clone, Copy, PartialEq, Eq)]", indent).unwrap();
+            writeln!(out, "{}#[repr({})]",
+                indent,
+                enum_entry["repr_type"].as_str().unwrap()).unwrap();
+            writeln!(out, "{}pub enum {}Enum {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap()
+            ).unwrap();
+            let indent = "        ";
             for c in enum_entry["members"].as_array().unwrap() {
                 writeln!(out, "        /// {},", c["description"].as_str().unwrap());
                 writeln!(
                     out,
-                    "        {} = {},",
+                    "{}{} = {},",
+                    indent,
                     c["name"].as_str().unwrap(),
                     c["discriminant"].as_str().unwrap()
                 )
                 .unwrap();
             }
+            let indent = "    ";
+            writeln!(out, "{}}}", indent);
             writeln!(out);
-            writeln!(out, "    }}");
+
+            writeln!(out);
+            writeln!(out, "{}impl Into<{}> for {}Enum {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+                enum_entry["name"].as_str().unwrap()
+            ).unwrap();
+            let indent = "        ";
+            writeln!(out, "{}fn into(self) -> {} {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+            );
+            let indent = "            ";
+            writeln!(out, "{}match self {{", indent);
+
+            let indent = "                ";
+            for c in enum_entry["members"].as_array().unwrap() {
+                writeln!(out, "{}{}Enum::{} => {}({}),", 
+                    indent,
+                    enum_entry["name"].as_str().unwrap(),
+                    c["name"].as_str().unwrap(),
+                    enum_entry["name"].as_str().unwrap(),
+                    c["discriminant"].as_str().unwrap()
+                );
+            }
+            let indent = "            ";
+            writeln!(out, "{}}}", indent);
+            let indent = "        ";
+            writeln!(out, "{}}}", indent);
+            let indent = "    ";
+            writeln!(out, "{}}}", indent);
+            writeln!(out);
+            
+            writeln!(out, "{}impl Into<{}Enum> for {} {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+                enum_entry["name"].as_str().unwrap()
+            ).unwrap();
+            let indent = "        ";
+            writeln!(out, "{}fn into(self) -> {}Enum {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+            );
+            let indent = "            ";
+            writeln!(out, "{}match self.0 {{", indent);
+
+            let indent = "                ";
+
+            let mut default_member = None;
+            for c in enum_entry["members"].as_array().unwrap() {
+                writeln!(out, "{}{} => {}Enum::{},", 
+                    indent,
+                    c["discriminant"].as_str().unwrap(),
+                    enum_entry["name"].as_str().unwrap(),
+                    c["name"].as_str().unwrap()
+                );
+                if let Some(is_default_str) = c["default"].as_str() {
+                    if is_default_str == "true" {
+                        default_member = Some(c["name"].as_str().unwrap())
+                    }
+                }
+            }
+
+            if let Some(default_member_name) = default_member {
+                writeln!(out, "{}_ => {}Enum::{},", 
+                    indent,
+                    enum_entry["name"].as_str().unwrap(),
+                    default_member_name
+                );
+            }
+
+            let indent = "            ";
+            writeln!(out, "{}}}", indent);
+            let indent = "        ";
+            writeln!(out, "{}}}", indent);
+            let indent = "    ";
+            writeln!(out, "{}}}", indent);
+            writeln!(out);
+
+            writeln!(out, "{}impl {} {{", 
+                indent,
+                enum_entry["name"].as_str().unwrap(),
+            );
+            let indent = "        ";
+            for c in enum_entry["members"].as_array().unwrap() {
+                writeln!(out, "{}pub const {}: {} = {};",
+                    indent,
+                    c["name"].as_str().unwrap(),
+                    enum_entry["repr_type"].as_str().unwrap(),
+                    c["discriminant"].as_str().unwrap()
+                );
+            }
+            let indent = "    ";
+            writeln!(out, "{}}}", indent);
+            writeln!(out);
         }
     }
 }
@@ -271,13 +383,13 @@ fn generate_api(jsonfile: &str, outfile: PathBuf) {
             if let Some(enums) = value.get("enums") {
                 generate_enums(&mut out, enums, namespace);
             } else {
-                writeln!(out, "    // (no enums in {})", namespace).unwrap();
+                writeln!(out, "    // (no enums in {}!)", namespace).unwrap();
             }
             writeln!(out).unwrap();
             if let Some(sz_consts) = value.get("sz_consts") {
                 generate_sz_consts(&mut out, sz_consts, namespace);
             } else {
-                writeln!(out, "    // (no sz_consts in {})", namespace).unwrap();
+                writeln!(out, "    // (no sz_consts in {}!)", namespace).unwrap();
             }
             writeln!(out).unwrap();
             if let Some(byte_aliases) = value.get("byte_aliases") {

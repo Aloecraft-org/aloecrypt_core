@@ -5,13 +5,18 @@
 
 include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 
+// pub mod address;
+// pub mod claim;
 pub mod dsa;
+pub mod fixed_byte;
 pub mod hash;
 pub mod kem;
 pub mod password;
 pub mod pkdf;
 pub mod recovery;
 pub mod rng;
+pub mod totp;
+
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //
 // Licensed under the Apache License, Version 2.0 (the License);
