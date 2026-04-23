@@ -1,39 +1,88 @@
 // src/dsa.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 use super::dsa_api::*;
-use ml_dsa::{ExpandedSigningKey, EncodedSignature};
 
 use ml_dsa::{
     ExpandedSigningKey, EncodedSignature,
     KeyGen, MlDsa44 as MlDsa44Params, MlDsa65 as MlDsa65Params, MlDsa87 as MlDsa87Params,
-    Signature, SigningKey, VerifyingKey,
+    Signature, VerifyingKey,
     signature::{Keypair, Signer, Verifier},
 };
 
 impl MlDsa44Keypair {
-    fn _signing_key(&self) -> SigningKey<MlDsa44Params> {
-        MlDsa44Params::from_seed((&self.private_seed).into())
+    #[inline(never)]
+    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa44Params as KeyGen>::KeyPair {
+        MlDsa44Params::from_seed(seed.into())
     }
+    #[inline(never)]
+    fn _signing_key(&self) -> ExpandedSigningKey<MlDsa44Params> {
+        let kp = Self::_kp(&self.private_seed);
+        kp.signing_key().clone()
+    }
+    #[inline(never)]
+    fn _encode_pubkey(kp: &<MlDsa44Params as KeyGen>::KeyPair) -> [u8; MLDSA_44_PUBKEY_SZ] {
+        kp.verifying_key().encode().into()
+    }
+    #[inline(never)]
+    fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa44Params>, msg: &[u8]) -> EncodedSignature<MlDsa44Params> {
+        sk.sign(msg).encode().into()
+    }
+    #[inline(never)]
     fn _verifier(&self) -> VerifyingKey<MlDsa44Params> {
-        VerifyingKey::<MlDsa44Params>::decode((&self.public_key).into())
+        let signing_key = Self::_kp(&(self.private_seed).into());
+        let public_key = Self::_encode_pubkey(&(signing_key).into());
+        VerifyingKey::<MlDsa44Params>::decode((&public_key).into())
     }
 }
 
 impl MlDsa65Keypair {
-    fn _signing_key(&self) -> SigningKey<MlDsa65Params> {
-        MlDsa65Params::from_seed((&self.private_seed).into())
+    #[inline(never)]
+    pub fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa65Params as KeyGen>::KeyPair {
+        MlDsa65Params::from_seed(seed.into())
     }
-    fn _verifier(&self) -> VerifyingKey<MlDsa65Params> {
-        VerifyingKey::<MlDsa65Params>::decode((&self.public_key).into())
+    #[inline(never)]
+    pub fn _signing_key(&self) -> ExpandedSigningKey<MlDsa65Params> {
+        let kp = Self::_kp(&self.private_seed);
+        kp.signing_key().clone()
+    }
+    #[inline(never)]
+    pub fn _encode_pubkey(kp: &<MlDsa65Params as KeyGen>::KeyPair) -> [u8; MLDSA_65_PUBKEY_SZ] {
+        kp.verifying_key().encode().into()
+    }
+    #[inline(never)]
+    pub fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa65Params>, msg: &[u8]) -> EncodedSignature<MlDsa65Params> {
+        sk.sign(msg).encode().into()
+    }
+    pub fn _verifier(&self) -> VerifyingKey<MlDsa65Params> {
+        let signing_key = Self::_kp(&(self.private_seed).into());
+        let public_key = Self::_encode_pubkey(&(signing_key).into());
+        VerifyingKey::<MlDsa65Params>::decode((&public_key).into())
     }
 }
 
 impl MlDsa87Keypair {
-    fn _signing_key(&self) -> SigningKey<MlDsa87Params> {
-        MlDsa87Params::from_seed((&self.private_seed).into())
+    #[inline(never)]
+    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa87Params as KeyGen>::KeyPair {
+        MlDsa87Params::from_seed(seed.into())
     }
+    #[inline(never)]
+    fn _signing_key(&self) -> ExpandedSigningKey<MlDsa87Params> {
+        let kp = Self::_kp(&self.private_seed);
+        kp.signing_key().clone()
+    }
+    #[inline(never)]
+    fn _encode_pubkey(kp: &<MlDsa87Params as KeyGen>::KeyPair) -> [u8; MLDSA_87_PUBKEY_SZ] {
+        kp.verifying_key().encode().into()
+    }
+    #[inline(never)]
+    fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa87Params>, msg: &[u8]) -> EncodedSignature<MlDsa87Params> {
+        sk.sign(msg).encode().into()
+    }
+    #[inline(never)]
     fn _verifier(&self) -> VerifyingKey<MlDsa87Params> {
-        VerifyingKey::<MlDsa87Params>::decode((&self.public_key).into())
+        let signing_key = Self::_kp(&(self.private_seed).into());
+        let public_key = Self::_encode_pubkey(&(signing_key).into());
+        VerifyingKey::<MlDsa87Params>::decode((&public_key).into())
     }
 }
 
@@ -68,13 +117,8 @@ impl MlDsaKeypair for MlDsa44Keypair {
     }
     #[inline(never)]
     fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let public_key = {
-            let signing_key = MlDsa44Params::from_seed(seed_bytes.into());
-            signing_key.verifying_key().encode().into()
-        };
         Self {
-            private_seed: (*seed_bytes).into(),
-            public_key,
+            private_seed: (*seed_bytes).into()
         }
     }
 }
@@ -89,13 +133,8 @@ impl MlDsaKeypair for MlDsa65Keypair {
     }
     #[inline(never)]
     fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let public_key = {
-            let signing_key = MlDsa65Params::from_seed(seed_bytes.into());
-            signing_key.verifying_key().encode().into()
-        };
         Self {
-            private_seed: (*seed_bytes).into(),
-            public_key,
+            private_seed: (*seed_bytes).into()
         }
     }
 }
@@ -110,13 +149,8 @@ impl MlDsaKeypair for MlDsa87Keypair {
     }
     #[inline(never)]
     fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
-        let public_key = {
-            let signing_key = MlDsa87Params::from_seed(seed_bytes.into());
-            signing_key.verifying_key().encode().into()
-        };
         Self {
             private_seed: (*seed_bytes).into(),
-            public_key,
         }
     }
 }
@@ -124,39 +158,49 @@ impl MlDsaKeypair for MlDsa87Keypair {
 impl IMlDsa44Keypair for MlDsa44Keypair {
     #[inline(never)]
     fn sign(&self, msg: &[u8]) -> MlDsa44Signature {
-        self._signing_key().sign(msg).encode().into()
+        let sk = self._signing_key();
+        Self::_sign_with_sk(&sk, msg).into()
     }
     #[inline(never)]
     fn get_verifier(&self) -> MlDsa44Verifier {
-        MlDsa44Verifier {
-            public_key: self.public_key,
-        }
+        let public_key = {
+            let signing_key = Self::_kp(&(self.private_seed).into());
+            // let signing_key = MlDsa44Params::from_seed(&(self.private_seed).into());
+            Self::_encode_pubkey(&signing_key)
+        };
+        MlDsa44Verifier { public_key }
     }
 }
 
 impl IMlDsa65Keypair for MlDsa65Keypair {
     #[inline(never)]
     fn sign(&self, msg: &[u8]) -> MlDsa65Signature {
-        self._signing_key().sign(msg).encode().into()
+        let sk = self._signing_key();
+        Self::_sign_with_sk(&sk, msg).into()
     }
     #[inline(never)]
     fn get_verifier(&self) -> MlDsa65Verifier {
-        MlDsa65Verifier {
-            public_key: self.public_key,
-        }
+        let public_key = {
+            let signing_key = Self::_kp(&(self.private_seed).into());
+            Self::_encode_pubkey(&signing_key)
+        };
+        MlDsa65Verifier { public_key }
     }
 }
 
 impl IMlDsa87Keypair for MlDsa87Keypair {
     #[inline(never)]
     fn sign(&self, msg: &[u8]) -> MlDsa87Signature {
-        self._signing_key().sign(msg).encode().into()
+        let sk = self._signing_key();
+        Self::_sign_with_sk(&sk, msg).into()
     }
     #[inline(never)]
     fn get_verifier(&self) -> MlDsa87Verifier {
-        MlDsa87Verifier {
-            public_key: self.public_key,
-        }
+        let public_key = {
+            let signing_key = MlDsa87Params::from_seed(&(self.private_seed).into());
+            Self::_encode_pubkey(&signing_key)
+        };
+        MlDsa87Verifier { public_key }
     }
 }
 
