@@ -1,6 +1,6 @@
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::totp_api::*;
 use aloecrypt_core::totp::*;
+use aloecrypt_core::totp_api::*;
 
 fn main() {
     use core::time::Duration;
@@ -36,7 +36,11 @@ fn main() {
         }
     }
     let step = cred.step_seconds;
-    println!("\n(Algorithm: {:?}, Step: {}s)", Into::<TotpAlgorithmEnum>::into(cred.algorithm), step);
+    println!(
+        "\n(Algorithm: {:?}, Step: {}s)",
+        Into::<TotpAlgorithmEnum>::into(cred.algorithm),
+        step
+    );
 
     let algorithms = [
         (

@@ -2,9 +2,8 @@
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![allow(warnings)]
 
-        
 use rand_core::{Rng, RngCore};
-        
+
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed);
@@ -23,9 +22,9 @@ use aloecrypt_core::hash::*;
 use aloecrypt_core::kem::*;
 use aloecrypt_core::kem_api::*;
 use aloecrypt_core::password::*;
+use aloecrypt_core::password_api::*;
 use aloecrypt_core::recovery;
 use aloecrypt_core::recovery_api::*;
-use aloecrypt_core::password_api::*;
 use aloecrypt_core::rng::*;
 use aloecrypt_core::rng_api::*;
 
@@ -35,7 +34,7 @@ fn main() {
     let mut sign_seed = EMPTY_MLDSA_SEED;
     let mut kem_seed_1 = EMPTY_KEM_DECAP_SEED;
     let mut kem_seed_2 = EMPTY_KEM_DECAP_SEED;
-    
+
     let mut aloe_rng = AloeRng::from_rng(&mut rng);
     let mut kem_512_prk = EMPTY_KEM_PRK_SEED;
     let mut kem_768_prk = EMPTY_KEM_PRK_SEED;
@@ -218,21 +217,43 @@ fn main() {
 
     // Secret holder takes authorizer keypair
     let authorizer_keypair = MlKem512Keypair::from_seed(&authorizer_private_seed);
-    let recoverable_secret = RecoverableSecret::create(authorizer_keypair.get_encapsulator(), recovery_secret, prk_seed, &secret_ikm, secret_domain);
+    let recoverable_secret = RecoverableSecret::create(
+        authorizer_keypair.get_encapsulator(),
+        recovery_secret,
+        prk_seed,
+        &secret_ikm,
+        secret_domain,
+    );
 
     // Recovery key holder keeps this
     let recovery_key = recoverable_secret.recovery_key;
 
     // Authorizer authorizes with recovery public key
-    let recovered_authorization = recovery::authorize_recovery(authorizer_keypair, &recovery_key.cipher, recovery_key.mac, &secret_ikm, secret_domain); 
+    let recovered_authorization = recovery::authorize_recovery(
+        authorizer_keypair,
+        &recovery_key.cipher,
+        recovery_key.mac,
+        &secret_ikm,
+        secret_domain,
+    );
 
     // Recoverer combines private key to recover secret
-    let recovered_secret = RecoverableSecret::recover(recovered_authorization, &recovery_key.secret);
-    
+    let recovered_secret =
+        RecoverableSecret::recover(recovered_authorization, &recovery_key.secret);
+
     assert_eq!(recoverable_secret.secret, recovered_secret);
 
-    println!("   inner_secret: {:02x}{:02x}{:02x}{:02x}", recoverable_secret.secret[0], recoverable_secret.secret[1], recoverable_secret.secret[2], recoverable_secret.secret[3]);
-    println!("   recovered_secret: {:02x}{:02x}{:02x}{:02x}", recovered_secret[0], recovered_secret[1], recovered_secret[2], recovered_secret[3]);
+    println!(
+        "   inner_secret: {:02x}{:02x}{:02x}{:02x}",
+        recoverable_secret.secret[0],
+        recoverable_secret.secret[1],
+        recoverable_secret.secret[2],
+        recoverable_secret.secret[3]
+    );
+    println!(
+        "   recovered_secret: {:02x}{:02x}{:02x}{:02x}",
+        recovered_secret[0], recovered_secret[1], recovered_secret[2], recovered_secret[3]
+    );
 
     println!("align.rs - done.");
 }

@@ -2,8 +2,8 @@
 // License: Apache-2.0 (disclaimer at bottom of file)
 use super::aloecrypt_api::*;
 use super::password_api::*;
-use core::cmp;
 use super::*;
+use core::cmp;
 
 pub const EMPTY_PASSWORD_ENCRYPTED_CHUNK: PasswordEncryptedChunk =
     [0u8; PASSWORD_CIPHER_CHUNK_SZ as usize + ENCRYPTED_TAG_SZ];

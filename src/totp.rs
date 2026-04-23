@@ -62,14 +62,16 @@ impl ITotpCredential for TotpCredential {
                 for (key, value) in url.query_pairs() {
                     match key.as_ref() {
                         "secret" => secret_val = Some(value),
-                        "algorithm" => algorithm = match value.as_ref() {
-                            "SHA1" => TotpAlgorithm(TotpAlgorithm::SHA1),
-                            "SHA256" => TotpAlgorithm(TotpAlgorithm::SHA256),
-                            "SHA512" => TotpAlgorithm(TotpAlgorithm::SHA512),
-                            "SHA3-256" => TotpAlgorithm(TotpAlgorithm::SHA3_256),
-                            "KECCAK256" => TotpAlgorithm(TotpAlgorithm::KECCAK256),
-                            _ => algorithm, // Keep default
-                        },
+                        "algorithm" => {
+                            algorithm = match value.as_ref() {
+                                "SHA1" => TotpAlgorithm(TotpAlgorithm::SHA1),
+                                "SHA256" => TotpAlgorithm(TotpAlgorithm::SHA256),
+                                "SHA512" => TotpAlgorithm(TotpAlgorithm::SHA512),
+                                "SHA3-256" => TotpAlgorithm(TotpAlgorithm::SHA3_256),
+                                "KECCAK256" => TotpAlgorithm(TotpAlgorithm::KECCAK256),
+                                _ => algorithm, // Keep default
+                            }
+                        }
                         "issuer" => issuer = VarChar255::from_str(&value),
                         "digits" => digits = value.parse().unwrap_or(6),
                         "period" => period = value.parse().unwrap_or(30),
@@ -111,7 +113,7 @@ impl ITotpCredential for TotpCredential {
         let digits = self.digits as usize;
         let secret = self.secret.to_byte_arr();
         let counter = (time / step as u64).to_be_bytes();
-    
+
         // 1. Generate HMAC digest based on selected algorithm
         let digest: [u8; 64] = match algo {
             TotpAlgorithmEnum::SHA1 => {
@@ -159,15 +161,15 @@ impl ITotpCredential for TotpCredential {
             TotpAlgorithmEnum::SHA512 => 64,
             _ => 32,
         };
-    
+
         let offset = (digest[hash_len - 1] & 0xf) as usize;
         let code_bytes = &digest[offset..offset + 4];
-    
+
         let mut code = ((code_bytes[0] as u32 & 0x7f) << 24)
             | ((code_bytes[1] as u32) << 16)
             | ((code_bytes[2] as u32) << 8)
             | (code_bytes[3] as u32);
-    
+
         // 3. Final Modulo and Array Conversion
         let mut result = [-1i8; 8];
         let powers = [
@@ -175,13 +177,12 @@ impl ITotpCredential for TotpCredential {
         ];
         let digits_idx = digits;
         let mut num = code % powers[digits_idx];
-    
+
         for i in (0..digits).rev() {
             result[i] = (num % 10) as i8;
             num /= 10;
         }
-    
+
         result
     }
 }
-

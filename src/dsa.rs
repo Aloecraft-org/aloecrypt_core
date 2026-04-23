@@ -3,9 +3,8 @@
 use super::dsa_api::*;
 
 use ml_dsa::{
-    ExpandedSigningKey, EncodedSignature,
-    KeyGen, MlDsa44 as MlDsa44Params, MlDsa65 as MlDsa65Params, MlDsa87 as MlDsa87Params,
-    Signature, VerifyingKey,
+    EncodedSignature, ExpandedSigningKey, KeyGen, MlDsa44 as MlDsa44Params,
+    MlDsa65 as MlDsa65Params, MlDsa87 as MlDsa87Params, Signature, VerifyingKey,
     signature::{Keypair, Signer, Verifier},
 };
 
@@ -24,7 +23,10 @@ impl MlDsa44Keypair {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
-    fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa44Params>, msg: &[u8]) -> EncodedSignature<MlDsa44Params> {
+    fn _sign_with_sk(
+        sk: &ExpandedSigningKey<MlDsa44Params>,
+        msg: &[u8],
+    ) -> EncodedSignature<MlDsa44Params> {
         sk.sign(msg).encode().into()
     }
     #[inline(never)]
@@ -50,7 +52,10 @@ impl MlDsa65Keypair {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
-    pub fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa65Params>, msg: &[u8]) -> EncodedSignature<MlDsa65Params> {
+    pub fn _sign_with_sk(
+        sk: &ExpandedSigningKey<MlDsa65Params>,
+        msg: &[u8],
+    ) -> EncodedSignature<MlDsa65Params> {
         sk.sign(msg).encode().into()
     }
     pub fn _verifier(&self) -> VerifyingKey<MlDsa65Params> {
@@ -75,7 +80,10 @@ impl MlDsa87Keypair {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
-    fn _sign_with_sk(sk: &ExpandedSigningKey<MlDsa87Params>, msg: &[u8]) -> EncodedSignature<MlDsa87Params> {
+    fn _sign_with_sk(
+        sk: &ExpandedSigningKey<MlDsa87Params>,
+        msg: &[u8],
+    ) -> EncodedSignature<MlDsa87Params> {
         sk.sign(msg).encode().into()
     }
     #[inline(never)]
@@ -118,7 +126,7 @@ impl MlDsaKeypair for MlDsa44Keypair {
     #[inline(never)]
     fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
         Self {
-            private_seed: (*seed_bytes).into()
+            private_seed: (*seed_bytes).into(),
         }
     }
 }
@@ -134,7 +142,7 @@ impl MlDsaKeypair for MlDsa65Keypair {
     #[inline(never)]
     fn unpack_bytes(seed_bytes: &MlDsaPrivateSeed) -> Self {
         Self {
-            private_seed: (*seed_bytes).into()
+            private_seed: (*seed_bytes).into(),
         }
     }
 }

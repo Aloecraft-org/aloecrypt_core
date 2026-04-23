@@ -41,7 +41,7 @@ fn generate_byte_aliases(out: &mut File, value: &serde_json::Value, namespace: &
     if let Some(items) = value.as_array() {
         for entry in items {
             let mut byte_type = "u8";
-            if let Some(is_signed_str) = entry["signed"].as_str(){
+            if let Some(is_signed_str) = entry["signed"].as_str() {
                 if is_signed_str == "true" {
                     byte_type = "i8";
                 }
@@ -77,21 +77,36 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                 writeln!(out, "{}#[derive({})]", indent, derives).unwrap();
             }
             writeln!(out, "{}#[repr(transparent)]", indent).unwrap();
-            writeln!(out, "{}pub struct {}(pub {});", 
+            writeln!(
+                out,
+                "{}pub struct {}(pub {});",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
                 enum_entry["repr_type"].as_str().unwrap()
-            ).unwrap();
+            )
+            .unwrap();
 
             writeln!(out);
-            writeln!(out, "{}#[derive(Debug, Clone, Copy, PartialEq, Eq)]", indent).unwrap();
-            writeln!(out, "{}#[repr({})]",
+            writeln!(
+                out,
+                "{}#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+                indent
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "{}#[repr({})]",
                 indent,
-                enum_entry["repr_type"].as_str().unwrap()).unwrap();
-            writeln!(out, "{}pub enum {}Enum {{", 
+                enum_entry["repr_type"].as_str().unwrap()
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "{}pub enum {}Enum {{",
                 indent,
                 enum_entry["name"].as_str().unwrap()
-            ).unwrap();
+            )
+            .unwrap();
             let indent = "        ";
             for c in enum_entry["members"].as_array().unwrap() {
                 writeln!(out, "        /// {},", c["description"].as_str().unwrap());
@@ -109,13 +124,18 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             writeln!(out);
 
             writeln!(out);
-            writeln!(out, "{}impl Into<{}> for {}Enum {{", 
+            writeln!(
+                out,
+                "{}impl Into<{}> for {}Enum {{",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
                 enum_entry["name"].as_str().unwrap()
-            ).unwrap();
+            )
+            .unwrap();
             let indent = "        ";
-            writeln!(out, "{}fn into(self) -> {} {{", 
+            writeln!(
+                out,
+                "{}fn into(self) -> {} {{",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
             );
@@ -124,7 +144,9 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
 
             let indent = "                ";
             for c in enum_entry["members"].as_array().unwrap() {
-                writeln!(out, "{}{}Enum::{} => {}({}),", 
+                writeln!(
+                    out,
+                    "{}{}Enum::{} => {}({}),",
                     indent,
                     enum_entry["name"].as_str().unwrap(),
                     c["name"].as_str().unwrap(),
@@ -139,14 +161,19 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             let indent = "    ";
             writeln!(out, "{}}}", indent);
             writeln!(out);
-            
-            writeln!(out, "{}impl Into<{}Enum> for {} {{", 
+
+            writeln!(
+                out,
+                "{}impl Into<{}Enum> for {} {{",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
                 enum_entry["name"].as_str().unwrap()
-            ).unwrap();
+            )
+            .unwrap();
             let indent = "        ";
-            writeln!(out, "{}fn into(self) -> {}Enum {{", 
+            writeln!(
+                out,
+                "{}fn into(self) -> {}Enum {{",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
             );
@@ -157,7 +184,9 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
 
             let mut default_member = None;
             for c in enum_entry["members"].as_array().unwrap() {
-                writeln!(out, "{}{} => {}Enum::{},", 
+                writeln!(
+                    out,
+                    "{}{} => {}Enum::{},",
                     indent,
                     c["discriminant"].as_str().unwrap(),
                     enum_entry["name"].as_str().unwrap(),
@@ -171,7 +200,9 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             }
 
             if let Some(default_member_name) = default_member {
-                writeln!(out, "{}_ => {}Enum::{},", 
+                writeln!(
+                    out,
+                    "{}_ => {}Enum::{},",
                     indent,
                     enum_entry["name"].as_str().unwrap(),
                     default_member_name
@@ -186,13 +217,17 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             writeln!(out, "{}}}", indent);
             writeln!(out);
 
-            writeln!(out, "{}impl {} {{", 
+            writeln!(
+                out,
+                "{}impl {} {{",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
             );
             let indent = "        ";
             for c in enum_entry["members"].as_array().unwrap() {
-                writeln!(out, "{}pub const {}: {} = {};",
+                writeln!(
+                    out,
+                    "{}pub const {}: {} = {};",
                     indent,
                     c["name"].as_str().unwrap(),
                     enum_entry["repr_type"].as_str().unwrap(),
@@ -342,7 +377,8 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
                                         indent,
                                         p["name"].as_str().unwrap(),
                                         pdesc.as_str().unwrap()
-                                    ).unwrap();
+                                    )
+                                    .unwrap();
                                 }
                             }
                         }
