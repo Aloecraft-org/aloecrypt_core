@@ -4,30 +4,51 @@
             {"name" : "ENCRYPTED_TAG_SZ",     "value" :   "16"},
             {"name" : "TIMESTAMP_SZ",         "value" :    "8"},
             {"name" : "TIMEZONE_STR_SZ",      "value" :   "32"},
-            {"name" : "ALOECRYPT_ADDRESS_SZ", "value" :   "32"}
+            {"name" : "ALOECRYPT_ADDRESS_SZ", "value" :   "32"},
+            {"name" : "VARSTRING_SZ",         "value" :  "512"},
+            {"name" : "VAR_U16_SZ",           "value" :  "512"},
+            {"name" : "VARCHAR_SZ",           "value" :  "256"},
+            {"name" : "VARBYTE_SZ",           "value" :  "256"}
         ],
         "byte_aliases" : [
             { "name" : "AloecryptAddress", "length": "ALOECRYPT_ADDRESS_SZ"},
             { "name" : "Timestamp",        "length": "TIMESTAMP_SZ"},
             { "name" : "Timezone",         "length": "TIMEZONE_STR_SZ"},
+            { "name" : "B512",             "length": "512"},
             { "name" : "B256",             "length": "256"}
         ],
         "empty_consts" : [
-            { "name" : "EMPTY_ALOECRYPT_ADDRESS",      "size": "ALOECRYPT_ADDRESS_SZ"}
+            { "name" : "EMPTY_ALOECRYPT_ADDRESS",      "size": "ALOECRYPT_ADDRESS_SZ"},
+            { "name" : "EMPTY_B512",                                    "size": "512"},
+            { "name" : "EMPTY_B256",                                    "size": "256"}
         ],
         "structs" : [
+            {
+                "name":"VarU16_255", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [ 
+                    {"name": "value", "type" : "B512"} 
+                ]
+            },
+            {
+                "name":"VarString511", 
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
+                "fields": [ 
+                    {"name": "value", "type" : "B512"} 
+                ]
+            },
             {
                 "name":"VarChar255", 
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields": [ 
-                    {"name": "value", "type" : "[u8;256]"} 
+                    {"name": "value", "type" : "B256"} 
                 ]
             },
             {
                 "name":"VarByte255", 
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "fields": [ 
-                    {"name": "value", "type" : "[u8;256]"} 
+                    {"name": "value", "type" : "B256"} 
                 ]
             },
             {
@@ -41,6 +62,26 @@
             }
         ],
         "traits" : [
+            {
+                "name" : "VarU16",
+                "functions": [
+                    {"name" : "empty", "return": "Self", "params": []},
+                    {"name" : "from_u16_arr", "return": "Self", "params": [{"name":"input", "type": "&[u16]"}]},
+                    {"name" : "to_u16_arr", "instance" : "&self", "return": "&[u16]", "params" : [] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&B512", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "var_u16_bytes", "type":"&B512"} ] }
+                ]
+            },
+            {
+                "name" : "VarString",
+                "functions": [
+                    {"name" : "empty", "return": "Self", "params": []},
+                    {"name" : "from_str", "return": "Self", "params": [{"name":"input", "type": "&str"}]},
+                    {"name" : "to_str", "instance" : "&self", "return": "&str", "params" : [] },
+                    {"name" : "pack_bytes",   "instance" : "&self", "return": "&B512", "params" : [] },
+                    {"name" : "unpack_bytes", "return": "Self", "params" : [ {"name": "varstring_bytes", "type":"&B512"} ] }
+                ]
+            },
             {
                 "name" : "VarChar",
                 "functions": [
@@ -78,8 +119,10 @@
         ],
         "functions": [],
         "impls" : [
-            {"trait":"VarChar255", "struct":"VarChar"},
-            {"trait":"VarByte255", "struct":"VarByte"}
+            {"trait": "VarString511", "struct": "VarString"},
+            {"trait": "VarU16_255",   "struct": "VarU16"   },
+            {"trait": "VarChar255",   "struct": "VarChar"  },
+            {"trait": "VarByte255",   "struct": "VarByte"  }
         ]
     },
     "proof_api": {
@@ -93,7 +136,7 @@
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "repr_type":"u16",
                 "members" : [
-                    {"name":"None",           "discriminant": "0", "default" : "true"},
+                    {"name":"NoValue",           "discriminant": "0", "default" : "true"},
                     {"name":"Attribute",      "discriminant": "10"},
                     {"name":"Validity",       "discriminant": "20"},
                     {"name":"Permission",     "discriminant": "30"},
@@ -106,7 +149,7 @@
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "repr_type":"u16",
                 "members" : [
-                    {"name": "None", "discriminant": "0", "default" : "true"},
+                    {"name": "NoValue", "discriminant": "0", "default" : "true"},
                     {"name": "Any", "discriminant": "65535"}
                 ]
             },
@@ -115,7 +158,7 @@
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "repr_type":"u16",
                 "members" : [
-                    {"name": "None", "discriminant": "0", "default" : "true"},
+                    {"name": "NoValue", "discriminant": "0", "default" : "true"},
                     {"name": "Sign", "discriminant": "10"},
                     {"name": "Verify", "discriminant": "11"},
                     {"name": "Encapsulate", "discriminant": "20"},
@@ -140,7 +183,7 @@
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "repr_type":"u16",
                 "members" : [
-                    {"name":"None",     "discriminant":  "0", "default" : "true"},
+                    {"name":"NoValue",     "discriminant":  "0", "default" : "true"},
                     {"name":"Hmac256" , "discriminant": "10"},
                     {"name":"Hash256" , "discriminant": "20"},
                     {"name":"Dsa44"   , "discriminant": "30"},
@@ -155,7 +198,7 @@
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "repr_type":"u16",
                 "members" : [
-                    {"name" : "None",             "discriminant": "0", "default" : "true"},
+                    {"name" : "NoValue",             "discriminant": "0", "default" : "true"},
                     {"name" : "VarChar255",       "discriminant": "30"},
                     {"name" : "VarByte255",       "discriminant": "31"},
                     {"name" : "Bool",             "discriminant": "40"},
@@ -243,7 +286,9 @@
             {"name":"MlDsa87Verifier", "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
                 "description": "MlDsa87 Verifier",
                 "fields": [ 
-                    {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]},
+                    {"name":"public_key", "type": "MlDsa87Pubkey", "description" : "MlDsa87 Public Verifier Key"} ]}
+        ],
+        "deprecated_structs":[
             {
                 "name":"VarSig", 
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable", 
@@ -319,16 +364,27 @@
                 ]}
             ]},
 
-            {"name": "IMlDsa87Verifier", "functions" : [
-                {"name": "verify",   "instance" : "&self",  "return": "bool", "params": [
-                    {"name":"msg", "type": "&[u8]"}, 
-                    {"name":"signature", "type":"&MlDsa87Signature"}
-                ],"unimplemented_functions" : [
+            {
+                "name": "IMlDsa87Verifier", 
+                "functions" : [
+                    {
+                        "name": "verify",   
+                        "instance" : "&self",  
+                        "return": "bool", 
+                        "params": [
+                            {"name":"msg", "type": "&[u8]"}, 
+                            {"name":"signature", "type":"&MlDsa87Signature"}
+                        ]
+                    }
+                ],
+                "unimplemented_functions" : [
                     "// fn verify_internal(&self, msg: &[u8], signature: &MlDsa87Signature) -> bool;",
                     "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa87Signature) -> bool;",
                     "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa87Signature) -> bool;"
-                ]}
-            ]},
+                ]
+            }
+        ],
+        "deprecated_traits" : [
             {
                 "name" : "IVarSig",
                 "functions": [
@@ -852,9 +908,13 @@
                 ]
             }
         ],
-        "sz_consts" : [],
+        "sz_consts" : [
+            {"name": "TOTP_RESULT_SZ",    "value": "8"}
+        ],
         "empty_consts" : [],
-        "byte_aliases" : [],
+        "byte_aliases" : [
+            {"name": "TotpResult", "length":"TOTP_RESULT_SZ", "signed" : "true" }
+        ],
         "structs" : [
             {
                 "name": "TotpCredential",
@@ -878,7 +938,7 @@
                     {"name" : "error",    "return": "Self", "params" : [ {"name": "message", "type":"&str"} ] },
                     {"name" : "invalid",  "return": "Self", "params" : [] },
                     {"name" : "from_uri", "return": "Self", "params" : [ {"name": "uri_str", "type":"&str"} ] },
-                    {"name" : "generate", "instance" : "&self", "return": "[i8; 8]", "params" : [ {"name": "time", "type":"u64"} ]}
+                    {"name" : "generate", "instance" : "&self", "return": "TotpResult", "params" : [ {"name": "time", "type":"u64"} ]}
                 ]
             }
         ],

@@ -40,11 +40,18 @@ fn generate_byte_aliases(out: &mut File, value: &serde_json::Value, namespace: &
     let indent = "    ";
     if let Some(items) = value.as_array() {
         for entry in items {
+            let mut byte_type = "u8";
+            if let Some(is_signed_str) = entry["signed"].as_str(){
+                if is_signed_str == "true" {
+                    byte_type = "i8";
+                }
+            }
             writeln!(
                 out,
-                "{}pub type {} = [u8; {}];",
+                "{}pub type {} = [{}; {}];",
                 indent,
                 entry["name"].as_str().unwrap(),
+                byte_type,
                 entry["length"].as_str().unwrap(),
             );
         }

@@ -11,6 +11,11 @@ description = """
 keywords = ["crypto"]
 categories = [ "cryptography", "no-std" ]
 
+[features]
+default = ["slip39_words", "bip39_words"]
+slip39_words = []
+bip39_words = []
+
 [profile.release]
 opt-level = "z"   # Optimizes aggressively for binary size rather than speed.
 lto = true        # Link-time optimization removes dead code across boundaries.
