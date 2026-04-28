@@ -21,7 +21,7 @@ fn main() {
     println!("Original: {:?}", String::from_utf8_lossy(original_data));
     println!("--------------------------------------------------");
 
-    let secret = to_slip39(original_data);
+    let secret = to_slip39_secret(original_data);
     let threshold = 3;
     let shares = create_5_slip39_shares(secret, threshold, seed);
 
@@ -55,7 +55,7 @@ fn main() {
     let recovery_3 = vec![parsed_shares[0], parsed_shares[2], parsed_shares[4]];
     let recovered_secret_3 = combine_slip39_shares(&recovery_3);
 
-    let decoded_3 = from_slip39(recovered_secret_3.to_u16_arr());
+    let decoded_3 = from_slip39_secret(recovered_secret_3.to_u16_arr());
     let len_3 = decoded_3.value[0] as usize;
     assert_eq!(&decoded_3.value[1..1 + len_3], original_data);
     println!("SUCCESS: 3-share secret reconstructed perfectly!\n");
@@ -70,7 +70,7 @@ fn main() {
     ];
     let recovered_secret_4 = combine_slip39_shares(&recovery_4);
 
-    let decoded_4 = from_slip39(recovered_secret_4.to_u16_arr());
+    let decoded_4 = from_slip39_secret(recovered_secret_4.to_u16_arr());
     let len_4 = decoded_4.value[0] as usize;
     assert_eq!(&decoded_4.value[1..1 + len_4], original_data);
     println!("SUCCESS: 4-share secret reconstructed perfectly!");

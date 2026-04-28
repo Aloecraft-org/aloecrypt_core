@@ -38,14 +38,14 @@ impl VarString for VarString511 {
     fn from_str(input: &str) -> Self {
         assert!(input.len() <= 511, "VarString input max length is 511");
         let mut value = [0u8; 512];
-        value[1..input.len() + 1].copy_from_slice(input.as_bytes());
+        value[2..input.len() + 2].copy_from_slice(input.as_bytes());
         value[0] = input.len() as u8;
         Self { value }
     }
 
     fn to_str(&self) -> &str {
         let len = (self.value[0] as usize).min(511);
-        core::str::from_utf8(&self.value[1..len + 1]).unwrap_or("")
+        core::str::from_utf8(&self.value[2..len + 2]).unwrap_or("")
     }
 
     fn pack_bytes(&self) -> &B512 {

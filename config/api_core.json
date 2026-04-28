@@ -892,10 +892,20 @@
             {"trait": "IRecoverableSecret", "struct": "RecoverableSecret"}
         ]
     },
-    "totp_api" : {
+    "otp_api" : {
         "enums" : [
             {
-                "name":"TotpAlgorithm",
+                "name":"OtpType",
+                "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+                "repr_type":"u16",
+                "members" : [
+                    {"name":"UNKNOWN",   "discriminant":  "0", "default" : "false"},
+                    {"name":"TOTP",      "discriminant":  "1", "default" : "true"},
+                    {"name":"HOTP",      "discriminant":  "2", "default" : "false"}
+                ]
+            },
+            {
+                "name":"OtpAlgorithm",
                 "derives" : "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
                 "repr_type":"u16",
                 "members" : [
@@ -909,41 +919,56 @@
             }
         ],
         "sz_consts" : [
-            {"name": "TOTP_RESULT_SZ",    "value": "8"}
+            {"name": "OTP_RESULT_SZ",    "value": "8"}
         ],
         "empty_consts" : [],
         "byte_aliases" : [
-            {"name": "TotpResult", "length":"TOTP_RESULT_SZ", "signed" : "true" }
+            {"name": "OtpResult", "length":"OTP_RESULT_SZ", "signed" : "true" }
         ],
         "structs" : [
             {
-                "name": "TotpCredential",
+                "name": "OtpCredential",
                 "description":"",
                 "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
                 "fields": [
-                    {"name": "secret", "type": "VarByte255", "description":""},
-                    {"name": "step_seconds", "type": "u32", "description":""},
-                    {"name": "digits", "type": "u8", "description":""},
-                    {"name": "algorithm", "type": "TotpAlgorithm", "description":""},
-                    {"name": "issuer", "type": "VarChar255", "description":""},
-                    {"name": "context", "type": "VarChar255", "description":""}
+                    {"name": "counter",      "type": "i64",          "description":""},
+                    {"name": "period",       "type": "i64",          "description":""},
+                    {"name": "t0",           "type": "u64",          "description":""},
+                    {"name": "digits",       "type": "u8",           "description":""},
+                    {"name": "secret",       "type": "VarByte255",   "description":""},
+                    {"name": "algorithm",    "type": "OtpAlgorithm", "description":""},
+                    {"name": "otp_type",     "type": "OtpType",      "description":""},
+                    {"name": "issuer",       "type": "VarChar255",   "description":""},
+                    {"name": "account_name", "type": "VarChar255",   "description":""},
+                    {"name": "label",        "type": "VarChar255",   "description":""}
                 ]
             }
         ],
         "traits" : [
             {
-                "name":"ITotpCredential",
+                "name":"IOtpCredential",
                 "generics": [],
                 "functions": [
-                    {"name" : "error",    "return": "Self", "params" : [ {"name": "message", "type":"&str"} ] },
-                    {"name" : "invalid",  "return": "Self", "params" : [] },
-                    {"name" : "from_uri", "return": "Self", "params" : [ {"name": "uri_str", "type":"&str"} ] },
-                    {"name" : "generate", "instance" : "&self", "return": "TotpResult", "params" : [ {"name": "time", "type":"u64"} ]}
+                    {"name" : "empty",    "return": "Self", "params" : [] },
+                    {"name" : "error",    "return": "Self", "params" : [ 
+                        {"name": "message", "type":"&str"}
+                    ] },
+                    {"name" : "invalid",  "return": "Self", "params" : [
+                        {"name": "message", "type":"&str"},
+                        {"name": "input_str", "type":"&str"}
+                    ] },
+                    {"name" : "from_string", "return": "Self", "params" : [ 
+                        {"name": "input_str", "type":"&str"} 
+                    ] },
+                    {"name" : "to_uri", "instance" : "&self", "return": "VarString511", "params" : [ ] },
+                    {"name" : "generate", "instance" : "&self", "return": "OtpResult", "params" : [ 
+                        {"name": "current", "type":"u64"} 
+                    ]}
                 ]
             }
         ],
         "impls" : [
-            {"trait":"ITotpCredential", "struct":"TotpCredential"}
+            {"trait":"IOtpCredential", "struct":"OtpCredential"}
         ]
     }
 }

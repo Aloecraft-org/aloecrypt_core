@@ -1,7 +1,7 @@
 // src/lib.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_main)]
 
 include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 
@@ -20,7 +20,7 @@ pub mod reedsolomon;
 pub mod rng;
 pub mod shamir;
 pub mod slip39;
-pub mod totp;
+pub mod otp;
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //

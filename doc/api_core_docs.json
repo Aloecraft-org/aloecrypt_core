@@ -906,10 +906,19 @@
         ]
 
     },
-    "totp_api" : {
+    "otp_api" : {
         "enums" : [
             {
-                "name":"TotpAlgorithm",
+                "name":"OtpType",
+                "description" : "",
+                "members" : [
+                    {"name":"UNKNOWN",   "description":  ""},
+                    {"name":"TOTP",      "description":  ""},
+                    {"name":"HOTP",      "description":  ""}
+                ]
+            },
+            {
+                "name":"OtpAlgorithm",
                 "description" : "",
                 "members" : [
                     {"name":"UNKNOWN",   "description":  ""},
@@ -922,35 +931,50 @@
             }
         ],
         "sz_consts" : [
-            {"name": "TOTP_RESULT_SZ",    "description": ""}
+            {"name": "OTP_RESULT_SZ",    "description": ""}
         ],
         "empty_consts" : [],
         "byte_aliases" : [
-            {"name": "TotpResult", "description":"TOTP result code for credential. -1 indicates a null digit (to accommodate 6 or 8 digit codes)" }
+            {"name": "OtpResult", "description":"OTP result code for credential. -1 indicates a null digit (to accommodate 6 or 8 digit codes)" }
         ],
         "structs" : [
             {
-                "name": "TotpCredential",
+                "name": "OtpCredential",
                 "description":"",
                 "fields": [
-                    {"name": "secret",       "description":""},
-                    {"name": "step_seconds", "description":""},
+                    {"name": "counter",      "description":""},
+                    {"name": "period",       "description":""},
+                    {"name": "t0",           "description":""},
                     {"name": "digits",       "description":""},
+                    {"name": "secret",       "description":""},
                     {"name": "algorithm",    "description":""},
+                    {"name": "otp_type",     "description":""},
                     {"name": "issuer",       "description":""},
-                    {"name": "context",      "description":""}
+                    {"name": "account_name", "description":""},
+                    {"name": "label",        "description":""}
                 ]
             }
         ],
         "traits" : [
             {
-                "name":"ITotpCredential",
+                "name":"IOtpCredential",
                 "description":"",
                 "functions": [
-                    {"name" : "error",    "description" : "", "params" : [ {"name": "message", "description" : ""} ] },
-                    {"name" : "invalid",  "description" : "", "params" : [] },
-                    {"name" : "from_uri", "description" : "", "params" : [ {"name": "uri_str", "description" : ""} ] },
-                    {"name" : "generate", "description" : "", "params" : [ {"name": "time", "description" : ""} ]}
+                    {"name" : "empty",       "description" : "", "params" : [] },
+                    {"name" : "error",       "description" : "", "params" : [ 
+                        {"name": "message", "description" : ""}
+                    ] },
+                    {"name" : "invalid",     "description" : "", "params" : [
+                        {"name": "message", "description" : ""},
+                        {"name": "input_str", "description" : ""}
+                    ] },
+                    {"name" : "from_string", "description" : "", "params" : [ 
+                        {"name": "input_str", "description" : ""} 
+                    ] },
+                    {"name" : "to_uri", "description" : "", "params" : [ ] },
+                    {"name" : "generate",    "description" : "", "params" : [ 
+                        {"name": "current", "description" : "totp time or hotp counter (DOES NOT INCREMENR HOTP COUNTER!)"}
+                    ]}
                 ]
             }
         ],
