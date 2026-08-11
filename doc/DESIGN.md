@@ -200,23 +200,66 @@ representable outcome rather than a hole in the type.
 
 ## 8. Known gaps
 
-Recorded here because they are silent — nothing fails, the output is just
-missing.
+Recorded here because they are silent — nothing fails loudly, the output is just
+missing or untested.
 
-**`generator/meta.py` has no enum handling.** It cannot size an enum type, so
-any struct with an enum field fails size resolution and is dropped from
-`meta_structs` entirely — taking its trait impl and every generated export with
-it. Today that is `TotpCredential` (via `TotpAlgorithm`), which is why
-`totp_api` emits zero plugin exports. Enums are generated as
-`#[repr(transparent)] struct X(pub u16)`, so the size is unambiguous; the fix is
-to register enum names in `type_sizes` with their `repr_type` size. It is held
-back only because it adds types to the Python and TypeScript surface, which is a
-design choice rather than a repair. CI asserts every other namespace exports
-something, and prints this one as a known gap.
+**The crate cannot be tested.** `cargo test` does not fail on an assertion, it
+fails to link: `rust-lld: error: undefined symbol: main`. `lib.rs` carries
+`#![no_main]`, so the test harness cannot emit an entry point. There is no
+`tests/` directory and no unit test anywhere; the only verification the repo has
+had is three example binaries that print SUCCESS. That is why both mnemonic
+binaries were broken on `main` without anyone noticing.
 
-**Schema entries are matched by name with no validation.** A mismatched
-`impls` pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the
-other way round — resolves to nothing and silently drops every export for that
+`#![cfg_attr(not(test), no_main)]` fixes it — verified: an integration test
+compiles and passes, and the host, `thumbv8m.main-none-eabihf` and
+`wasm32-wasip2` builds are unaffected. `no_main` is meaningful for a bare-metal
+binary, not for an rlib. This should be the first change of the next phase,
+because everything else planned is a change to cryptographic code.
+
+**`generator/meta.py` has no enum handling.** The Rust representation is
+deliberate and correct — `#[repr(transparent)] struct X(pub u16)` is unambiguous
+across the FFI boundary. The generator simply never learned about it: with no
+entry in `type_sizes` for an enum type, any struct containing one fails size
+resolution and is dropped from `meta_structs` entirely, taking its trait impl
+and every generated export with it. Today that is `TotpCredential` via
+`TotpAlgorithm`, which is why `totp_api` emits zero plugin exports.
+
+The fix is parity, not redesign: register enum names with their `repr_type` size
+and mirror the same flat representation in the Python and TypeScript output. CI
+asserts every other namespace exports something and prints this one as a known
+gap.
+
+**Schema entries are matched by name with no validation.** A mismatched `impls`
+pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the other
+way round — resolves to nothing and silently drops every export for that
 namespace. That cost all twenty `aloecrypt_api` exports until it was found. A
 schema that is also a specification wants a lint pass: every `impls` pair
 resolving, every referenced type existing, every struct's size known.
+
+## 9. Upstream
+
+`ml-dsa` and `ml-kem` are pinned to release candidates (`0.1.0-rc.8`,
+`0.3.0-rc.0`) while `0.1.1` and `0.3.2` are released. The bump is a contained
+migration rather than a version change: `KeyGen` is gone and `from_seed` is now
+an inherent method on `SigningKey<P>`.
+
+Worth doing for a specific reason. `ml-dsa 0.1.1` holds the expanded signing key
+behind `MaybeBox`, described upstream as "opportunistic heap allocation when the
+`alloc` feature is available that falls back to stack allocation when it's
+unavailable". Stack pressure on the lattice paths is a known problem and
+upstream has addressed it — but the benefit is gated on `alloc`, which this
+crate does not have, so in the current configuration the bump buys nothing.
+
+That makes it a measurable experiment rather than a guess: migrate, then try a
+small arena or bump allocator on the embedded profile and measure with
+`cargo run --release --bin stackcheck`. Current baseline, x86-64 release:
+
+| operation | stack |
+|---|---|
+| ml-kem-768 keygen + encapsulate + decapsulate | ~48 KB |
+| ml-dsa-44 keygen + sign + verify | ~182 KB |
+| ml-dsa-65 keygen + sign + verify | ~283 KB |
+| ml-dsa-87 keygen + sign + verify | ~436 KB |
+
+Do the migration after the test suite exists. It is the change most likely to
+break something quietly.
