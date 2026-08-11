@@ -130,8 +130,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: install generator deps
         run: pip install pydantic
+      # `make lint` builds the lib first: the merged schema the linter reads is
+      # written by build.rs, so invoking the linter directly on a fresh
+      # checkout finds no .generated/api_core_merged.json and exits 2.
       - name: lint the schema
-        run: python3 generator/lint_schema.py
+        run: make lint
       - name: generate python bindings
         run: make generate
       - name: every namespace exports something
