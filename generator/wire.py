@@ -21,9 +21,17 @@ schema can actually send a non-Ok status.
 
 Export naming: {namespace}___{struct_lower}__{fn_name}  (instance/static trait methods)
               {namespace}___{fn_name}                   (standalone functions)
+
+Fixed-size returns are length-checked by the bindings: an Ok reply whose
+payload is not exactly the declared size decodes as Unspecified, never as
+success. Variable-length returns (&str, &[u8]) are delimited by the payload
+extent and are the only unchecked case. usize returns cross as u64 LE.
 """
 
 STATUS_PREFIX_SZ = 2
+# The wire width of a usize return. The schema uses usize only for lengths;
+# pinning it to 8 bytes keeps the format identical on 32- and 64-bit hosts.
+USIZE_WIRE_SZ = 8
 
 from dataclasses import dataclass
 from typing import Optional
@@ -145,11 +153,16 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
             if ret_type:
                 if ret_type == "bool":
                     ret_size = 1
-                elif ret_type == "Self":
-                    ret_size = struct_sz
                 else:
                     inner = ret_type.lstrip("&").strip()
-                    ret_size = meta.type_sizes.get(inner)
+                    # "&Self" strips to "Self", which has no type_sizes entry;
+                    # both spellings mean this struct.
+                    if inner == "Self":
+                        ret_size = struct_sz
+                    elif inner == "usize":
+                        ret_size = USIZE_WIRE_SZ
+                    else:
+                        ret_size = meta.type_sizes.get(inner)
 
             calls.append(WireCall(
                 export_name=ename, namespace=impl.namespace,
@@ -184,7 +197,10 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
                 ret_size = 1
             else:
                 inner = ret_type.lstrip("&").strip()
-                ret_size = meta.type_sizes.get(inner)
+                if inner == "usize":
+                    ret_size = USIZE_WIRE_SZ
+                else:
+                    ret_size = meta.type_sizes.get(inner)
 
         calls.append(WireCall(
             export_name=ename, namespace=ns,

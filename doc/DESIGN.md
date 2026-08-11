@@ -309,7 +309,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-82 tests, 3 ignored. Every ignored test names the bug it is waiting on and
+86 tests, 1 ignored. Every ignored test names the bug it is waiting on and
 fails deliberately when that bug is fixed, so the gap cannot be quietly lost:
 
 | Ignored test | Waiting on |
@@ -400,8 +400,10 @@ an 8 KB gratuitous copy is worth removing.
 **Authenticated decryption returns an error instead of aborting.**
 `password_decrypt_next_chunk` ended in `.expect("Decryption failed")`, so a
 wrong password took the module down under `panic = "abort"`. It now returns
-`Result<_, AloecryptError>`. The error type carries no detail about *why* on
-purpose — for authenticated decryption the only safe answer is that it did not
+`Result<_, StatusCode>` (originally via an interim `AloecryptError` type,
+folded into the generated `StatusCode` when the wire error channel landed —
+section 16). The error carries no detail about *why* on purpose — for
+authenticated decryption the only safe answer is that it did not
 authenticate. The encrypt path keeps its `expect` with a comment explaining why
 it is unreachable: `encrypt_in_place_detached` only fails when the buffer
 exceeds the AEAD limit, and the chunk is a fixed size.
@@ -505,11 +507,23 @@ Built as agreed in section 7, with the details that surfaced in the doing:
   unrecognized code decodes to — an unknown status can never read as success.
   The lint enforces this contract: `StatusCode` must exist, `Ok` must be 0,
   and `Ok` must not be the default.
+- **Fixed-size returns are length-checked.** An Ok reply whose payload is not
+  exactly the declared size decodes as `Unspecified`, never as truncated key
+  material — the "payload absent, not zeroed" rule would otherwise only hold
+  for callers that also check lengths themselves. Generated `unpack` rejects
+  short input for the same reason. Variable-length returns (`&str`, `&[u8]`)
+  are delimited by the payload extent and are the one unchecked case; `usize`
+  returns cross as u64 LE.
 - **The schema marks fallible functions** with `"fallible": "true"`. In Rust
-  the generated trait signature becomes `Result<T, StatusCode>`; in Python
-  the wrapper raises `AloecryptStatusError`. Infallible functions keep their
-  bare return — the prefix is uniform on the wire, but only a function that
-  can actually fail forces callers through a `Result`.
+  a fallible *trait* function's generated signature becomes
+  `Result<T, StatusCode>`; a fallible *standalone* function is hand-written,
+  so `build.rs` emits a fn-pointer assertion
+  (`const _: fn(..) -> Result<T, StatusCode> = crate::module::name;`) for
+  every namespace-level function, making any drift between the schema
+  signature and the Rust implementation a compile error naming the function.
+  In Python the wrapper raises `AloecryptStatusError`. Infallible functions
+  keep their bare return — the prefix is uniform on the wire, but only a
+  function that can actually fail forces callers through a `Result`.
 - **`src/error.rs` folded into the generated type**, as planned. It now
   re-exports `StatusCode`/`StatusCodeEnum` and defines `AloecryptResult<T>`;
   the hand-written `AloecryptError` is gone.

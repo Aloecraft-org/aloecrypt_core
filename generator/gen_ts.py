@@ -348,6 +348,13 @@ class TypeScriptGenerator(LangGenerator):
     # ── Call wrappers ─────────────────────────────────────────────────────
 
     def emit_call_wrapper(self, call: WireCall) -> list[str]:
+        # STATUS PREFIX NOT IMPLEMENTED. The wire format (see wire.py) now
+        # prefixes every reply with STATUS_PREFIX_SZ bytes of little-endian
+        # StatusCode, and the payload is absent on any non-Ok status. This
+        # wrapper still decodes at offset 0, so if this generator is ever
+        # finished, the status handling must be its first feature -- without
+        # it, every struct and byte-alias return absorbs the status word into
+        # its leading bytes, silently. Mirror gen_py.py's _check_status.
         lines = []
 
         # Build TS function signature

@@ -232,5 +232,23 @@ jobs:
           except Exception as e:
               assert type(e).__name__ == 'AloecryptStatusError' and e.code == 1
 
-          print("wire status prefix: decode, raise, and short-reply paths all pass")
+          # An Ok status with a truncated (or absent) payload must decode as
+          # Unspecified, never as short key material. This is the case a
+          # first buggy Rust export layer would actually produce.
+          for bad in (b'\x00\x00', b'\x00\x00' + DCR().pack()[:20]):
+              try:
+                  ns['password_api___password_decrypt_next_chunk'](
+                      chunk, cipher, StubPlugin(bad))
+                  raise SystemExit(f"truncated Ok payload ({len(bad)}B) must raise")
+              except Exception as e:
+                  assert type(e).__name__ == 'AloecryptStatusError' and e.code == 65535, e
+          MKS = ns['recovery_api___authorize_recovery']
+          kp, rc = ns['MlKem512Keypair'](), bytes(ns['RecoveryCipher'].SZ)
+          try:
+              MKS(kp, rc, bytes(32), b'ikm', 'domain', StubPlugin(b'\x00\x00'))
+              raise SystemExit("empty MlKemSecret payload must raise")
+          except Exception as e:
+              assert type(e).__name__ == 'AloecryptStatusError' and e.code == 65535, e
+
+          print("wire status prefix: decode, raise, short-reply and truncated-Ok paths all pass")
           EOF

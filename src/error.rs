@@ -12,10 +12,13 @@
 // prefix is uniform so there is exactly one format to reason about.
 //
 // In Rust, a fallible function returns `Result<T, StatusCode>`; the schema
-// marks it with `"fallible": "true"` and the generated trait signature
-// matches. `StatusCode` is the transparent newtype that crosses the wire;
-// `StatusCodeEnum` is the matching Rust enum for ergonomic construction and
-// matching, converted with `.into()` in either direction.
+// marks it with `"fallible": "true"`. For trait functions the generated
+// signature carries the `Result`; standalone functions are hand-written, so
+// the build emits a fn-pointer assertion per schema function that makes any
+// signature drift a compile error. `StatusCode` is the transparent newtype
+// that crosses the wire; `StatusCodeEnum` is the matching Rust enum for
+// ergonomic construction and matching, converted with `.into()` in either
+// direction.
 //
 // Codes are coarse on purpose. For authenticated decryption, "wrong key" and
 // "altered ciphertext" share `AuthFailed` deliberately: distinguishing them

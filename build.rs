@@ -58,13 +58,61 @@ fn generate_byte_aliases(out: &mut File, value: &serde_json::Value, namespace: &
     }
 }
 
+// Namespace-level functions are implemented by hand in src/, not generated, so
+// nothing ties their schema signatures to the Rust that actually runs -- a
+// schema edit (a changed param, a function marked fallible) would drift
+// silently while the build stayed green. These fn-pointer assertions close
+// that: each one coerces the hand-written function to the schema's exact
+// signature, so any mismatch is a compile error naming the function.
 fn generate_functions(out: &mut File, value: &serde_json::Value, namespace: &str) {
     let indent = "    ";
+    let module = namespace.strip_suffix("_api").unwrap_or(namespace);
     if let Some(items) = value.as_array() {
         for entry in items {
-            // writeln!(out, "{}pub const {} : usize = {};" , indent, entry["name"], entry["value"]);
+            let name = entry["name"].as_str().unwrap();
+            let fallible = entry
+                .get("fallible")
+                .and_then(|f| f.as_str())
+                .map(|f| f == "true")
+                .unwrap_or(false);
+
+            let params = entry["params"]
+                .as_array()
+                .map(|ps| {
+                    ps.iter()
+                        .filter_map(|p| p["type"].as_str())
+                        .map(str::trim)
+                        .filter(|t| !t.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+
+            let ret = entry.get("return").and_then(|r| r.as_str()).unwrap_or("()");
+            let ret = if fallible {
+                format!("Result<{}, StatusCode>", ret)
+            } else {
+                ret.to_string()
+            };
+
+            writeln!(
+                out,
+                "{}const _: fn({}) -> {} = crate::{}::{};",
+                indent, params, ret, module, name
+            )
+            .unwrap();
         }
     }
+}
+
+/// A discriminant may arrive as a JSON string ("1") or a bare number (1);
+/// meta.py and the lint accept both, so the Rust side must too rather than
+/// panicking on the dialect the guards just blessed.
+fn disc_str(v: &serde_json::Value) -> String {
+    v.as_str()
+        .map(str::to_string)
+        .or_else(|| v.as_i64().map(|n| n.to_string()))
+        .expect("enum discriminant is neither string nor integer")
 }
 
 fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
@@ -82,7 +130,7 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                 "{}pub struct {}(pub {});",
                 indent,
                 enum_entry["name"].as_str().unwrap(),
-                enum_entry["repr_type"].as_str().unwrap()
+                enum_entry["repr_type"].as_str().unwrap_or("u16")
             )
             .unwrap();
 
@@ -97,7 +145,7 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                 out,
                 "{}#[repr({})]",
                 indent,
-                enum_entry["repr_type"].as_str().unwrap()
+                enum_entry["repr_type"].as_str().unwrap_or("u16")
             )
             .unwrap();
             writeln!(
@@ -109,13 +157,18 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             .unwrap();
             let indent = "        ";
             for c in enum_entry["members"].as_array().unwrap() {
-                writeln!(out, "        /// {},", c["description"].as_str().unwrap());
+                // A missing description is the schema lint's finding to make,
+                // with namespace and member named -- not a bare unwrap panic
+                // here that would abort the build before the lint can run.
+                if let Some(desc) = c["description"].as_str() {
+                    writeln!(out, "        /// {}", desc);
+                }
                 writeln!(
                     out,
                     "{}{} = {},",
                     indent,
                     c["name"].as_str().unwrap(),
-                    c["discriminant"].as_str().unwrap()
+                    disc_str(&c["discriminant"])
                 )
                 .unwrap();
             }
@@ -151,7 +204,7 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                     enum_entry["name"].as_str().unwrap(),
                     c["name"].as_str().unwrap(),
                     enum_entry["name"].as_str().unwrap(),
-                    c["discriminant"].as_str().unwrap()
+                    disc_str(&c["discriminant"])
                 );
             }
             let indent = "            ";
@@ -188,7 +241,7 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                     out,
                     "{}{} => {}Enum::{},",
                     indent,
-                    c["discriminant"].as_str().unwrap(),
+                    disc_str(&c["discriminant"]),
                     enum_entry["name"].as_str().unwrap(),
                     c["name"].as_str().unwrap()
                 );
@@ -236,8 +289,8 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
                     "{}pub const {}: {} = {};",
                     indent,
                     c["name"].as_str().unwrap(),
-                    enum_entry["repr_type"].as_str().unwrap(),
-                    c["discriminant"].as_str().unwrap()
+                    enum_entry["repr_type"].as_str().unwrap_or("u16"),
+                    disc_str(&c["discriminant"])
                 );
             }
             let indent = "    ";

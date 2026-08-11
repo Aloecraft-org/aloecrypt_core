@@ -147,8 +147,41 @@ def lint(schema_path: str) -> int:
                     f"description (build.rs requires one after the doc merge)",
                 )
 
+        # Standalone functions get the same signature validation as trait
+        # functions: their types resolve by the same silent lookup, and they
+        # are where the fallible exports live.
+        for fn in ns.get("functions", []):
+            ret = fn.get("return")
+            if ret:
+                resolved = ret.strip() in VARLEN_TYPES or strip_ref(ret).strip() in types
+                f.check(
+                    resolved,
+                    f"{ns_name}.{fn['name']}: unknown return type {ret!r}",
+                )
+            for p in fn.get("params", []):
+                if not p.get("name"):
+                    continue
+                f.check(
+                    "type" in p,
+                    f"{ns_name}.{fn['name']}: param {p.get('name')!r} has no type",
+                )
+                if "type" in p:
+                    pt = p["type"]
+                    resolved = pt.strip() in VARLEN_TYPES or strip_ref(pt).strip() in types
+                    f.check(
+                        resolved,
+                        f"{ns_name}.{fn['name']}: param {p['name']!r} has "
+                        f"unknown type {pt!r}",
+                    )
+
         # `fallible` gates the wire error channel; anything but the strings
-        # "true"/"false" would be silently read as false.
+        # "true"/"false" would be silently read as false. A misspelled key
+        # would too -- with no diagnostic at all -- so function entries also
+        # reject keys outside the known set.
+        known_fn_keys = {
+            "name", "return", "params", "fallible", "description",
+            "instance", "constraints", "unimplemented_functions",
+        }
         for holder in ns.get("traits", []) + [ns]:
             for fn in holder.get("functions", []):
                 if "fallible" in fn:
@@ -156,6 +189,12 @@ def lint(schema_path: str) -> int:
                         fn["fallible"] in ("true", "false"),
                         f"{ns_name}.{fn['name']}: fallible must be the string "
                         f"'true' or 'false', not {fn['fallible']!r}",
+                    )
+                for key in fn:
+                    f.check(
+                        key in known_fn_keys,
+                        f"{ns_name}.{fn['name']}: unknown key {key!r} "
+                        f"(misspelled 'fallible'?)",
                     )
 
         # A duplicated type name across namespaces silently shadows.
@@ -224,6 +263,12 @@ def lint(schema_path: str) -> int:
                 t["name"] in meta.meta_traits,
                 f"{ns_name}.{t['name']}: declared in the schema but dropped by "
                 f"meta.py",
+            )
+        for fn in ns.get("functions", []):
+            f.check(
+                fn["name"] in meta.meta_functions,
+                f"{ns_name}.{fn['name']}: declared in the schema but dropped "
+                f"by meta.py",
             )
 
     # ── Report ───────────────────────────────────────────────────────────

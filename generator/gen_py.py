@@ -13,7 +13,7 @@ from meta import (
     MetaByteAlias, MetaConst, MetaField, MetaEnum,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
-from wire import WireCall, PackedField, build_wire_calls
+from wire import WireCall, PackedField, build_wire_calls, STATUS_PREFIX_SZ, USIZE_WIRE_SZ
 from gen_base import LangGenerator
 from pathlib import Path
 
@@ -408,6 +408,13 @@ class PythonGenerator(LangGenerator):
         # unpack
         lines.append("    @classmethod")
         lines.append(f"    def unpack(cls, data: bytes) -> \"{struct.name}\":")
+        # Short input must fail loudly: the byte-alias field slices below
+        # would otherwise silently produce truncated key material.
+        lines.append("        if len(data) < cls.SIZE:")
+        lines.append(
+            "            raise ValueError("
+            f"f\"{struct.name}: got {{len(data)}} bytes, SIZE is {{cls.SIZE}}\")"
+        )
         lines.append("        offset = 0")
         for f in struct.fields:
             lines += self._field_unpack_lines(f, indent="        ")
@@ -475,18 +482,24 @@ class PythonGenerator(LangGenerator):
 
     def emit_pack_helpers(self) -> list[str]:
         return [
-            "def _check_status(result: bytes) -> bytes:",
-            '    """Strip the uniform 2-byte status prefix, raising on a non-Ok code.',
+            "def _check_status(result: bytes, expected_size: int = None) -> bytes:",
+            f'    """Strip the uniform {STATUS_PREFIX_SZ}-byte status prefix, raising on a non-Ok code.',
             "",
-            "    A short result (fewer than 2 bytes) is treated as Unspecified rather",
-            "    than indexed blindly: a malformed reply must never read as success.",
+            "    A malformed reply must never read as success: a result shorter than",
+            "    the prefix, and an Ok payload that is not exactly the declared size,",
+            "    both raise Unspecified rather than yielding short or shifted bytes.",
+            "    expected_size is None only for variable-length returns, which are",
+            "    delimited by the payload extent.",
             '    """',
-            "    if len(result) < 2:",
+            f"    if len(result) < {STATUS_PREFIX_SZ}:",
             "        raise AloecryptStatusError(StatusCode.Unspecified)",
             "    status = _struct.unpack_from('<H', result, 0)[0]",
             "    if status != 0:",
             "        raise AloecryptStatusError(status)",
-            "    return bytes(result[2:])",
+            f"    payload = bytes(result[{STATUS_PREFIX_SZ}:])",
+            "    if expected_size is not None and len(payload) != expected_size:",
+            "        raise AloecryptStatusError(StatusCode.Unspecified)",
+            "    return payload",
             "",
             "def _pack_varlen(data: bytes) -> bytes:",
             "    return _struct.pack('<I', len(data)) + data",
@@ -550,29 +563,53 @@ class PythonGenerator(LangGenerator):
 
         lines.append("    payload = b''.join(parts)")
         # Every export carries the status prefix; _check_status strips it or
-        # raises. Infallible exports always send Ok, so the check is free.
-        lines.append(f"    result = _check_status(plugin.call('{call.export_name}', payload))")
+        # raises, and length-checks fixed-size payloads so a truncated Ok
+        # reply can never decode as short key material.
+        expected = self._expected_payload_size(call)
+        expected_arg = "" if expected is None else f", {expected}"
+        lines.append(
+            f"    result = _check_status(plugin.call('{call.export_name}', payload){expected_arg})"
+        )
 
         # Unpack result
+        rt = (call.return_type or "").strip()
+        inner = strip_ref(rt).strip()
         if call.return_type is None:
             lines.append("    return")
-        elif call.return_type == "bool":
+        elif rt == "bool":
             lines.append("    return result[0] != 0")
-        elif call.return_type == "Self" and call.struct_name:
+        elif inner == "Self" and call.struct_name:
             lines.append(f"    return {call.struct_name}.unpack(result)")
-        elif call.return_type.startswith("&"):
-            inner = strip_ref(call.return_type)
-            if inner in self.meta.meta_structs:
-                lines.append(f"    return {inner}.unpack(result)")
-            else:
-                lines.append("    return bytes(result)")
-        elif call.return_type in self.meta.meta_structs:
-            lines.append(f"    return {call.return_type}.unpack(result)")
+        elif rt == "&str":
+            lines.append("    return result.decode('utf-8')")
+        elif rt == "&[u8]":
+            lines.append("    return bytes(result)")
+        elif inner in ("usize", "u8", "u16", "u32", "u64", "u128"):
+            lines.append("    return int.from_bytes(result, 'little')")
+        elif inner in self.meta.meta_structs:
+            lines.append(f"    return {inner}.unpack(result)")
         else:
             # byte alias
             lines.append("    return bytes(result)")
 
         return lines
+
+    def _expected_payload_size(self, call: WireCall) -> int | None:
+        """The exact payload length an Ok reply must carry, or None for the
+        variable-length returns (&str, &[u8]) that the payload extent delimits."""
+        rt = (call.return_type or "").strip()
+        if not rt:
+            return 0  # void: an Ok reply carries no payload at all
+        if rt in ("&str", "&[u8]"):
+            return None
+        if rt == "bool":
+            return 1
+        inner = strip_ref(rt).strip()
+        if inner == "Self":
+            return self.meta.type_sizes.get(call.struct_name)
+        if inner == "usize":
+            return USIZE_WIRE_SZ
+        return self.meta.type_sizes.get(inner)
 
     def _pack_expr(self, pf: PackedField) -> str:
         t = pf.type_str
