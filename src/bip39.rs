@@ -46,30 +46,30 @@ pub fn from_bip39_secret(data: &[u16]) -> VarByte255 {
 }
 
 #[cfg(feature = "bip39_words")]
-pub fn to_bip39_mnemonic(indices: &[u16]) -> VarString511 {
-    let mut out = VarString511::empty();
+pub fn to_bip39_mnemonic(indices: &[u16]) -> VarString510 {
+    let mut out = VarString510::empty();
 
     let mut out_len = 0;
     for (i, &idx) in indices.iter().enumerate() {
-        if i > 0 && out_len < 511 {
-            out.value[out_len + 1] = b' ';
+        if i > 0 && out_len < 510 {
+            out.value[out_len + 2] = b' ';
             out_len += 1;
         }
 
         let word = BIP39_WORDLIST[idx as usize].as_bytes();
         let w_len = word.len();
 
-        if out_len + w_len <= 511 {
-            out.value[out_len + 1..out_len + 1 + w_len].copy_from_slice(word);
+        if out_len + w_len <= 510 {
+            out.value[out_len + 2..out_len + 2 + w_len].copy_from_slice(word);
             out_len += w_len;
         }
     }
-    out.value[0] = out_len as u8;
+    out.value[0..2].copy_from_slice(&(out_len as u16).to_le_bytes());
     out
 }
 
 #[cfg(feature = "bip39_words")]
-pub fn from_bip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
+pub fn from_bip39_mnemonic(mnemonic: &VarString510) -> VarU16_255 {
     let mut arr = [0u16; 255];
     let mut len = 0;
     for word in mnemonic.to_str().split(' ') {

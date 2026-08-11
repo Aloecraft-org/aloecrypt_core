@@ -412,3 +412,44 @@ digest from different logical inputs. Every field now carries a `u64`
 little-endian length. `hmac` gets the same treatment for its salt and domain.
 This changes every derived value in the crate — addresses, recovery secrets —
 which is why it was worth doing before anything is persisted.
+
+## 14. The Var types
+
+Kept in-tree for now rather than extracted, and fixed in place.
+
+**`VarU16_255` no longer hands out a `&[u16]`.** `to_u16_arr` cast a byte
+pointer at offset 2 inside the struct's own `[u8; 512]` to `*const u16`. Every
+generated struct is `#[repr(C, packed)]`, which pins the wire layout but also
+forces alignment 1 on that buffer — so the struct may sit at an odd address and
+the reference is misaligned. That is undefined behaviour in Rust even if the
+reference is never dereferenced, and no amount of care at the call site fixes
+it: you cannot soundly borrow a `&[u16]` out of an align-1 buffer.
+
+The trait now exposes `len()`, and decoding is `read_u16_arr(&mut [u16; 255])`,
+which writes into a caller buffer and returns the count. It allocates nothing,
+which matters on the embedded profile. `from_u16_arr` also stopped
+reinterpreting `&[u16]` as bytes — that made the encoding host-endian in a type
+whose entire purpose is crossing a wire boundary. Both directions are now
+explicit little-endian.
+
+`read_u16_arr` is deliberately **not** in the schema, so it is not a plugin
+export: an out-parameter has no representation in a wire format that returns
+bytes and cannot write into caller memory. A binding decodes `pack_bytes`
+itself. This is the first case where a Rust-side ergonomic and a wire-expressible
+API genuinely had to differ, and it will not be the last.
+
+**`VarString511` became `VarString510`.** It stored its length in one byte while
+advertising 511 bytes of capacity, so anything from 256 upward silently read
+back truncated. The prefix is now a two-byte little-endian length, which leaves
+510 bytes of payload in the 512-byte buffer — hence the rename, since the old
+name was wrong either way. The mnemonic writers in `bip39.rs` and `slip39.rs`
+index around that prefix by hand and were updated with it.
+
+**Smaller things.** `VarByte255::to_byte_arr` had an unreachable bounds branch
+(a one-byte length cannot exceed the payload); the string decoders now document
+that they return an empty string rather than panicking on non-UTF-8, which is
+the right call for attacker-reachable bytes but should be a deliberate one.
+
+The extraction into a separate `no_std` crate is still worth doing. It is easier
+now than it was: the types are sound, the encoding is explicit, and the only
+schema coupling left is the four struct definitions and their traits.

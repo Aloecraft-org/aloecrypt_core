@@ -7,6 +7,15 @@ use aloecrypt_core::rng_api::*;
 use aloecrypt_core::shamir::*;
 use aloecrypt_core::slip39::*;
 
+/// Decode a VarU16_255 into an owned Vec. `to_u16_arr` was removed because it
+/// handed out a `&[u16]` borrowed from an align-1 packed buffer, which is
+/// undefined behaviour; `read_u16_arr` decodes into a caller buffer instead.
+fn words(v: &VarU16_255) -> Vec<u16> {
+    let mut buf = [0u16; 255];
+    let n = v.read_u16_arr(&mut buf);
+    buf[..n].to_vec()
+}
+
 fn seed(n: u8) -> RngSeed {
     let mut s = [0u8; 32];
     for (i, b) in s.iter_mut().enumerate() {
@@ -116,7 +125,7 @@ fn slip39_recovers_from_exactly_the_threshold() {
     let subset = [shares[0], shares[2], shares[4]];
     let combined = combine_slip39_shares(&subset);
     assert_eq!(
-        from_slip39_secret(combined.to_u16_arr()).to_byte_arr(),
+        from_slip39_secret(&words(&combined)).to_byte_arr(),
         &data[..]
     );
 }
@@ -129,7 +138,7 @@ fn slip39_recovers_from_surplus_shares() {
     let subset = [shares[0], shares[1], shares[3], shares[4]];
     let combined = combine_slip39_shares(&subset);
     assert_eq!(
-        from_slip39_secret(combined.to_u16_arr()).to_byte_arr(),
+        from_slip39_secret(&words(&combined)).to_byte_arr(),
         &data[..]
     );
 }
@@ -145,7 +154,7 @@ fn slip39_recovers_from_every_threshold_subset() {
                 let subset = [shares[a], shares[b], shares[c]];
                 let combined = combine_slip39_shares(&subset);
                 assert_eq!(
-                    from_slip39_secret(combined.to_u16_arr()).to_byte_arr(),
+                    from_slip39_secret(&words(&combined)).to_byte_arr(),
                     &data[..],
                     "slip39 subset ({a},{b},{c}) failed to recover"
                 );
@@ -162,8 +171,8 @@ fn slip39_sub_threshold_does_not_recover() {
     let subset = [shares[0], shares[1]];
     let combined = combine_slip39_shares(&subset);
     assert_ne!(
-        combined.to_u16_arr(),
-        secret.to_u16_arr(),
+        &words(&combined),
+        &words(&secret),
         "two shares recovered a 3-of-5 secret"
     );
 }

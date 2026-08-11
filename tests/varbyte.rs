@@ -6,6 +6,15 @@
 
 use aloecrypt_core::aloecrypt_api::*;
 
+/// Decode a VarU16_255 into an owned Vec. `to_u16_arr` was removed because it
+/// handed out a `&[u16]` borrowed from an align-1 packed buffer, which is
+/// undefined behaviour; `read_u16_arr` decodes into a caller buffer instead.
+fn words(v: &VarU16_255) -> Vec<u16> {
+    let mut buf = [0u16; 255];
+    let n = v.read_u16_arr(&mut buf);
+    buf[..n].to_vec()
+}
+
 // ---------------------------------------------------------------- VarByte255
 
 #[test]
@@ -53,34 +62,27 @@ fn varchar_survives_pack_unpack() {
     assert_eq!(VarChar255::unpack_bytes(&packed).to_str(), "aloecrypt");
 }
 
-// -------------------------------------------------------------- VarString511
+// -------------------------------------------------------------- VarString510
 
 #[test]
 fn varstring_roundtrips_below_256() {
     for len in [0usize, 1, 32, 254, 255] {
         let s: String = core::iter::repeat('x').take(len).collect();
-        let v = VarString511::from_str(&s);
-        assert_eq!(v.to_str(), s, "VarString511 round trip at len {len}");
+        let v = VarString510::from_str(&s);
+        assert_eq!(v.to_str(), s, "VarString510 round trip at len {len}");
     }
 }
 
 #[test]
-#[ignore = "KNOWN BUG: VarString511 advertises 511 bytes but stores its length \
-            in a single byte, so anything from 256..=511 reads back with a \
-            truncated length. Fixing it changes the packed layout, so it is \
-            deferred to the Var* extraction. Un-ignore with the two-byte prefix."]
 fn varstring_roundtrips_up_to_capacity() {
-    // The type advertises 511 bytes of capacity and asserts on more, so every
-    // length it accepts must round trip.
-    for len in [256usize, 300, 400, 511] {
+    // The type advertises 510 bytes of capacity and asserts on more, so every
+    // length it accepts must round trip. Lengths above 255 needed the two-byte
+    // prefix; with a one-byte prefix they silently read back truncated.
+    for len in [256usize, 300, 400, 510] {
         let s: String = core::iter::repeat('x').take(len).collect();
-        let v = VarString511::from_str(&s);
-        assert_eq!(
-            v.to_str().len(),
-            len,
-            "VarString511 lost length at {len} (one-byte length prefix cannot hold it)"
-        );
-        assert_eq!(v.to_str(), s, "VarString511 round trip at len {len}");
+        let v = VarString510::from_str(&s);
+        assert_eq!(v.to_str().len(), len, "VarString510 lost length at {len}");
+        assert_eq!(v.to_str(), s, "VarString510 round trip at len {len}");
     }
 }
 
@@ -91,11 +93,7 @@ fn varu16_roundtrips_across_lengths() {
     for len in [0usize, 1, 2, 100, 254, 255] {
         let data: Vec<u16> = (0..len).map(|i| (i * 37 % 1024) as u16).collect();
         let v = VarU16_255::from_u16_arr(&data);
-        assert_eq!(
-            v.to_u16_arr(),
-            &data[..],
-            "VarU16_255 round trip at len {len}"
-        );
+        assert_eq!(&words(&v), &data[..], "VarU16_255 round trip at len {len}");
     }
 }
 
@@ -118,5 +116,5 @@ fn varu16_survives_pack_unpack() {
     let data: Vec<u16> = (0..250).map(|i| (i * 13 % 2048) as u16).collect();
     let v = VarU16_255::from_u16_arr(&data);
     let packed = *v.pack_bytes();
-    assert_eq!(VarU16_255::unpack_bytes(&packed).to_u16_arr(), &data[..]);
+    assert_eq!(words(&VarU16_255::unpack_bytes(&packed)), data);
 }

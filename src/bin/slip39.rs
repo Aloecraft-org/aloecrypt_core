@@ -4,6 +4,16 @@ use aloecrypt_core::rng_api::*;
 use aloecrypt_core::slip39::*;
 
 use rand_core::Rng;
+
+/// Decode a VarU16_255 into an owned Vec. `to_u16_arr` was removed because it
+/// handed out a `&[u16]` borrowed from an align-1 packed buffer, which is
+/// undefined behaviour; `read_u16_arr` decodes into a caller buffer instead.
+fn words(v: &VarU16_255) -> Vec<u16> {
+    let mut buf = [0u16; 255];
+    let n = v.read_u16_arr(&mut buf);
+    buf[..n].to_vec()
+}
+
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).expect("host entropy source failed");
@@ -28,15 +38,15 @@ fn main() {
     for (i, share) in shares.iter().enumerate() {
         #[cfg(feature = "slip39_words")]
         {
-            let mnemonic = to_slip39_mnemonic(share.to_u16_arr());
+            let mnemonic = to_slip39_mnemonic(&words(&share));
             let loc = u16::from_le_bytes([share.value[2], share.value[3]]);
             println!("Share {} (Loc {}): {}", i + 1, loc, mnemonic.to_str());
 
             // Exercise mnemonic parsing path
             let parsed_share = from_slip39_mnemonic(&mnemonic);
             assert_eq!(
-                share.to_u16_arr(),
-                parsed_share.to_u16_arr(),
+                &words(&share),
+                &words(&parsed_share),
                 "Mnemonic parsing mismatch"
             );
             parsed_shares.push(parsed_share);
@@ -54,7 +64,7 @@ fn main() {
     let recovery_3 = vec![parsed_shares[0], parsed_shares[2], parsed_shares[4]];
     let recovered_secret_3 = combine_slip39_shares(&recovery_3);
 
-    let decoded_3 = from_slip39_secret(recovered_secret_3.to_u16_arr());
+    let decoded_3 = from_slip39_secret(&words(&recovered_secret_3));
     let len_3 = decoded_3.value[0] as usize;
     assert_eq!(&decoded_3.value[1..1 + len_3], original_data);
     println!("SUCCESS: 3-share secret reconstructed perfectly!\n");
@@ -69,7 +79,7 @@ fn main() {
     ];
     let recovered_secret_4 = combine_slip39_shares(&recovery_4);
 
-    let decoded_4 = from_slip39_secret(recovered_secret_4.to_u16_arr());
+    let decoded_4 = from_slip39_secret(&words(&recovered_secret_4));
     let len_4 = decoded_4.value[0] as usize;
     assert_eq!(&decoded_4.value[1..1 + len_4], original_data);
     println!("SUCCESS: 4-share secret reconstructed perfectly!");
