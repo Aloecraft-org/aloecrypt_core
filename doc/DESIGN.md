@@ -216,18 +216,6 @@ compiles and passes, and the host, `thumbv8m.main-none-eabihf` and
 binary, not for an rlib. This should be the first change of the next phase,
 because everything else planned is a change to cryptographic code.
 
-**`generator/meta.py` has no enum handling.** The Rust representation is
-deliberate and correct — `#[repr(transparent)] struct X(pub u16)` is unambiguous
-across the FFI boundary. The generator simply never learned about it: with no
-entry in `type_sizes` for an enum type, any struct containing one fails size
-resolution and is dropped from `meta_structs` entirely, taking its trait impl
-and every generated export with it. Today that is `TotpCredential` via
-`TotpAlgorithm`, which is why `totp_api` emits zero plugin exports.
-
-The fix is parity, not redesign: register enum names with their `repr_type` size
-and mirror the same flat representation in the Python and TypeScript output. CI
-asserts every other namespace exports something and prints this one as a known
-gap.
 
 **Schema entries are matched by name with no validation.** A mismatched `impls`
 pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the other
@@ -331,3 +319,45 @@ One ergonomic note worth knowing before writing more tests: generated structs
 are `#[repr(C, packed)]`, so a field cannot be referenced directly.
 `assert_eq!(cred.digits, 6)` is a compile error (E0793), not a lint — copy the
 field to a local first.
+
+## 12. Enum codegen
+
+Enums are now first class in the generator. `meta.py` gained an enum pass that
+runs before structs and registers each enum's `repr_type` size in
+`type_sizes`, so a struct containing an enum field resolves instead of being
+silently dropped.
+
+The representation mirrors the Rust decision rather than reinterpreting it. The
+generated Rust is `#[repr(transparent)] struct X(pub u16)` — a flat newtype
+chosen so the value crosses the FFI boundary unchanged — so:
+
+- **Python** emits an `int` subclass with the members as class constants, plus
+  a `name_of()` helper for display. It packs as its repr primitive.
+- **TypeScript** emits `export type X = number` with a `const` object of
+  members.
+
+Neither introduces a richer enum type that would need converting at the
+boundary. `totp_api` now emits its four exports; generated Python went from
+101,642 to 110,866 bytes.
+
+Two things surfaced while fixing it:
+
+**Nested struct fields defaulted to raw bytes.** `_field_default` returned
+`bytes(N)` for any type with a known size, including nested structs, while
+`_field_pack_expr` emitted `.pack()` for them — so a default-constructed struct
+with a nested struct field raised `'bytes' object has no attribute 'pack'`. This
+predates the enum work and affected `AloeRngU8Result`, `RecoverableSecret`,
+`RecoveryKey` and `AloecryptAttribute`. Fixed by defaulting to an instance of
+the nested type.
+
+**The TypeScript generator is not runnable.** `TypeScriptGenerator` leaves
+`emit_namespace_wrappers` unimplemented, so the class cannot be instantiated,
+and its `main()` reads `"../api_core.json"`, a path that does not exist. Both
+predate this work and match the original repo's "partial for typescript" note.
+`make generate` only runs the Python generator, so nothing depends on it today.
+
+CI now asserts that every one of the nine namespaces emits at least one export,
+and separately that every generated struct default-constructs, packs to exactly
+its declared `SIZE`, and survives an unpack — 31 structs at present. Between
+them those two checks catch a struct being dropped and a field default that
+disagrees with the packing code, neither of which breaks the Rust build.

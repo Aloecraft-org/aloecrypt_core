@@ -139,15 +139,8 @@ jobs:
           out=.generated/gen_py/aloecrypt_core.py
           test -f "$out"
           fail=0
-          # KNOWN GAP -- totp_api is absent from this list on purpose.
-          # generator/meta.py has no enum handling, so it cannot size
-          # TotpAlgorithm; TotpCredential therefore fails size resolution and is
-          # dropped from meta_structs entirely, taking its impl and all five of
-          # its exports with it. Any future struct with an enum field will
-          # vanish the same way, silently. Add totp_api here once meta.py
-          # registers enum repr sizes.
           for ns in aloecrypt_api dsa_api kem_api hash_api pkdf_api \
-                    password_api rng_api recovery_api; do
+                    password_api rng_api recovery_api totp_api; do
             n=$(grep -cE "^def ${ns}___" "$out" || true)
             printf '%-16s %3d exports\n' "$ns" "$n"
             if [ "$n" -eq 0 ]; then
@@ -155,7 +148,44 @@ jobs:
               fail=1
             fi
           done
-          echo "--- known gap ---"
-          printf '%-16s %3d exports (expected 0, see comment above)\n' \
-            totp_api "$(grep -cE '^def totp_api___' "$out" || true)"
           exit $fail
+      - name: generated bindings are importable and round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          # Exercises the generated module without a plugin: every struct must
+          # default-construct, pack to exactly its declared SIZE, and survive an
+          # unpack. This is what catches a struct being silently dropped, or a
+          # field default that disagrees with the packing code.
+          src = open('.generated/gen_py/aloecrypt_core.py').read()
+          ns = {}
+          exec(compile(src, 'aloecrypt_core.py', 'exec'), ns)
+
+          failures = []
+          checked = 0
+          for name, obj in sorted(ns.items()):
+              if not isinstance(obj, type) or not hasattr(obj, 'SIZE'):
+                  continue
+              if not hasattr(obj, 'pack'):
+                  continue
+              try:
+                  packed = obj().pack()
+              except Exception as exc:
+                  failures.append(f"{name}: pack() raised {exc!r}")
+                  continue
+              if len(packed) != obj.SIZE:
+                  failures.append(f"{name}: packed {len(packed)} bytes, SIZE says {obj.SIZE}")
+                  continue
+              try:
+                  obj.unpack(packed)
+              except Exception as exc:
+                  failures.append(f"{name}: unpack() raised {exc!r}")
+                  continue
+              checked += 1
+
+          print(f"{checked} struct(s) pack/unpack at their declared size")
+          for f in failures:
+              print("  ERROR:", f)
+          raise SystemExit(1 if failures else 0)
+          EOF

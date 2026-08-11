@@ -10,7 +10,7 @@ Emits:
 
 from meta import (
     APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam,
-    MetaByteAlias, MetaConst, MetaField,
+    MetaByteAlias, MetaConst, MetaField, MetaEnum,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
 from wire import WireCall, PackedField, build_wire_calls
@@ -221,6 +221,38 @@ class PythonGenerator(LangGenerator):
             lines.append("")
         return lines
 
+    # ── Enums ─────────────────────────────────────────────────────────────
+
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Flat int subclass, mirroring the Rust #[repr(transparent)] newtype."""
+        lines = []
+        lines.append(f"class {enum.name}(int):")
+        doc = enum.description or f"{enum.repr_type} value ({enum.size} bytes)"
+        lines.append(f'    """{doc}')
+        lines.append("")
+        lines.append(f"    Flat {enum.repr_type} on the wire -- the Rust side is a")
+        lines.append("    #[repr(transparent)] newtype, so the value crosses unchanged.")
+        lines.append('    """')
+        lines.append(f"    SZ: ClassVar[int] = {enum.size}")
+        for m in enum.members:
+            bits = []
+            if m.description:
+                bits.append(m.description)
+            if m.is_default:
+                bits.append("default")
+            note = f"  # {'; '.join(bits)}" if bits else ""
+            lines.append(f"    {m.name}: ClassVar[int] = {m.discriminant}{note}")
+        lines.append("")
+        lines.append("    @classmethod")
+        lines.append("    def name_of(cls, value: int) -> str:")
+        lines.append("        return {")
+        for m in enum.members:
+            lines.append(f"            {m.discriminant}: {m.name!r},")
+        lines.append("        }.get(int(value), f\"<unknown {int(value)}>\")")
+        lines.append("")
+        lines.append(f"{enum.name}_SZ: int = {enum.size}")
+        return lines
+
     # ── Traits ────────────────────────────────────────────────────────────
 
     def emit_trait(self, trait: MetaTrait) -> list[str]:
@@ -294,11 +326,22 @@ class PythonGenerator(LangGenerator):
 
         return lines
 
+    def _enum_repr(self, type_name: str) -> str | None:
+        """If this type is a schema enum, the primitive it is represented as."""
+        enum = self.meta.meta_enums.get(type_name.strip())
+        return enum.repr_type if enum else None
+
     def _field_default(self, f: MetaField) -> str:
         t = f.type_name.strip()
+        t = self._enum_repr(t) or t
         if t in PRIMITIVE_TYPES:
             return " = 0"
-        # Byte alias or struct — default to empty bytes
+        # A nested struct must default to an instance of that struct, not raw
+        # bytes: pack() calls .pack() on it. The lambda defers the name lookup
+        # until instantiation, by which point the top-level alias exists.
+        if t in self.meta.meta_structs:
+            return f" = field(default_factory=lambda: {t}())"
+        # Byte alias — default to empty bytes
         sz = self.meta.type_sizes.get(t)
         if sz is not None:
             return f" = field(default_factory=lambda: bytes({sz}))"
@@ -356,6 +399,8 @@ class PythonGenerator(LangGenerator):
 
     def _field_pack_expr(self, f: MetaField) -> str:
         t = f.type_name.strip()
+        # Enums are flat values over their repr type on the wire.
+        t = self._enum_repr(t) or t
         if t == "u8":
             return f"_struct.pack('<B', self.{f.name})"
         elif t == "u16":
@@ -378,6 +423,7 @@ class PythonGenerator(LangGenerator):
     def _field_unpack_lines(self, f: MetaField, indent: str) -> list[str]:
         lines = []
         t = f.type_name.strip()
+        t = self._enum_repr(t) or t
         if t == "u8":
             lines.append(f"{indent}{f.name} = data[offset]")
             lines.append(f"{indent}offset += 1")

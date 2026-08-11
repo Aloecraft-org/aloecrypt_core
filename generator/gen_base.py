@@ -7,7 +7,7 @@ and FFI call wrapper generation.
 """
 
 from abc import ABC, abstractmethod
-from meta import APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam, MetaByteAlias, MetaConst
+from meta import APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam, MetaByteAlias, MetaConst, MetaEnum
 from wire import WireCall, PackedField, build_wire_calls
 
 
@@ -52,6 +52,16 @@ class LangGenerator(ABC):
     @abstractmethod
     def emit_byte_aliases(self, aliases: dict[str, MetaByteAlias]) -> list[str]:
         """Emit byte alias type definitions."""
+        ...
+
+    @abstractmethod
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Emit an enum as a flat value over its repr type.
+
+        The Rust side is a #[repr(transparent)] newtype so the value crosses the
+        FFI boundary unchanged; target languages mirror that rather than
+        introducing a richer type that would need converting at the boundary.
+        """
         ...
 
     # ── Structs / Models ──────────────────────────────────────────────────
@@ -101,6 +111,12 @@ class LangGenerator(ABC):
         lines.append(self.section_comment("Byte Aliases"))
         lines += self.emit_byte_aliases(self.meta.meta_byte_aliases)
         lines.append("")
+
+        # Enums
+        lines.append(self.section_comment("Enums"))
+        for enum in self.meta.meta_enums.values():
+            lines += self.emit_enum(enum)
+            lines.append("")
 
         # Traits / Interfaces
         lines.append(self.section_comment("Traits"))

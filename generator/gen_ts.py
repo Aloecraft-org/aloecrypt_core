@@ -10,7 +10,7 @@ Emits:
 
 from meta import (
     APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam,
-    MetaByteAlias, MetaConst, MetaField,
+    MetaByteAlias, MetaConst, MetaEnum, MetaField,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
 from wire import WireCall, PackedField
@@ -100,6 +100,23 @@ class TypeScriptGenerator(LangGenerator):
             lines.append(f"export type {a.name} = Uint8Array;")
             lines.append(f"export const {a.name}_SZ: number = {a.length};")
             lines.append("")
+        return lines
+
+    # ── Enums ─────────────────────────────────────────────────────────────
+
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Flat numeric constants, mirroring the Rust #[repr(transparent)] newtype."""
+        lines = []
+        if enum.description:
+            lines.append(f"/** {enum.description} */")
+        lines.append(f"/** Flat {enum.repr_type} ({enum.size} bytes) on the wire. */")
+        lines.append(f"export type {enum.name} = number;")
+        lines.append(f"export const {enum.name} = {{")
+        for m in enum.members:
+            note = f"  // {m.description}" if m.description else ""
+            lines.append(f"  {m.name}: {m.discriminant},{note}")
+        lines.append("} as const;")
+        lines.append(f"export const {enum.name}_SZ: number = {enum.size};")
         return lines
 
     # ── Traits ────────────────────────────────────────────────────────────
@@ -204,8 +221,15 @@ class TypeScriptGenerator(LangGenerator):
         lines.append("  }")
         return lines
 
+    def _enum_repr(self, type_name: str) -> str | None:
+        """If this type is a schema enum, the primitive it is represented as."""
+        enum = self.meta.meta_enums.get(type_name.strip())
+        return enum.repr_type if enum else None
+
     def _field_pack_ts(self, f: MetaField) -> str:
         t = f.type_name.strip()
+        # Enums are flat values over their repr type on the wire.
+        t = self._enum_repr(t) or t
         if t == "u8":
             return f"new Uint8Array([this.{f.name}])"
         elif t == "u16":
@@ -226,6 +250,7 @@ class TypeScriptGenerator(LangGenerator):
     def _field_unpack_ts(self, f: MetaField, indent: str) -> list[str]:
         lines = []
         t = f.type_name.strip()
+        t = self._enum_repr(t) or t
         if t == "u8":
             lines.append(f"{indent}const {f.name} = data[offset];")
             lines.append(f"{indent}offset += 1;")

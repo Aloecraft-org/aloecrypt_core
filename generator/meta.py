@@ -156,6 +156,29 @@ class MetaField(BaseModel):
     description: Optional[str] = Field(None)
 
 
+class MetaEnumMember(BaseModel):
+    name: str
+    discriminant: int
+    description: Optional[str] = Field(None)
+    is_default: bool = Field(False)
+
+
+class MetaEnum(BaseModel):
+    """A schema enum.
+
+    Generated Rust is `#[repr(transparent)] struct X(pub <repr_type>)` -- a flat
+    newtype over a primitive, chosen so the value crosses the FFI boundary
+    unchanged. Generators mirror that flat representation rather than building a
+    richer enum type in the target language.
+    """
+    name: str
+    namespace: str
+    repr_type: str
+    size: int
+    description: Optional[str] = Field(None)
+    members: list[MetaEnumMember]
+
+
 class MetaStruct(BaseModel):
     name: str
     namespace: str
@@ -171,6 +194,7 @@ class APIMetaData(BaseModel):
     const_literals: dict[str, int]
     meta_consts: dict[str, MetaConst]
     meta_byte_aliases: dict[str, MetaByteAlias]
+    meta_enums: dict[str, MetaEnum]
     meta_structs: dict[str, MetaStruct]
     meta_traits: dict[str, MetaTrait]
     meta_trait_impls: list[MetaTraitImpl]
@@ -248,6 +272,7 @@ def load_meta(filename: str) -> APIMetaData:
     const_literals: dict[str, int] = {}
     meta_consts: dict[str, MetaConst] = {}
     meta_byte_aliases: dict[str, MetaByteAlias] = {}
+    meta_enums: dict[str, MetaEnum] = {}
     meta_structs: dict[str, MetaStruct] = {}
     meta_traits: dict[str, MetaTrait] = {}
     meta_trait_impls: list[MetaTraitImpl] = []
@@ -300,6 +325,33 @@ def load_meta(filename: str) -> APIMetaData:
                     name=ba["name"], namespace=ns_name,
                     len_str=length_expr, length=resolved)
                 type_sizes[ba["name"]] = resolved
+
+    # ── Pass 2b: Enums ──
+    # Must run before structs: an enum used as a struct field needs a known size
+    # or the whole struct fails size resolution and is silently dropped.
+    for ns_name, ns_val in schema.items():
+        if not isinstance(ns_val, dict):
+            continue
+        for en in ns_val.get("enums", []):
+            repr_type = en.get("repr_type", "u16").strip()
+            size = PRIMITIVE_TYPES.get(repr_type)
+            if size is None:
+                raise ValueError(
+                    f"enum {en['name']} has non-primitive repr_type {repr_type!r}")
+            members = [
+                MetaEnumMember(
+                    name=m["name"],
+                    discriminant=int(str(m["discriminant"]).strip()),
+                    description=m.get("description"),
+                    is_default=str(m.get("default", "")).strip() == "true",
+                )
+                for m in en.get("members", [])
+            ]
+            meta_enums[en["name"]] = MetaEnum(
+                name=en["name"], namespace=ns_name,
+                repr_type=repr_type, size=size,
+                description=en.get("description"), members=members)
+            type_sizes[en["name"]] = size
 
     # ── Pass 3: Structs ──
     all_structs = []
@@ -430,6 +482,7 @@ def load_meta(filename: str) -> APIMetaData:
         const_literals=const_literals,
         meta_consts=meta_consts,
         meta_byte_aliases=meta_byte_aliases,
+        meta_enums=meta_enums,
         meta_structs=meta_structs,
         meta_traits=meta_traits,
         meta_trait_impls=meta_trait_impls,
