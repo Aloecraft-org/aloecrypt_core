@@ -37,7 +37,13 @@ macro_rules! impl_create_shamir_shares {
                 while !_check_nonzero_unique(&location_buf) {
                     rng._fill_bytes(&mut location_buf);
                 }
-                for idx in 0..MAX_VARIANTS {
+                // One coefficient row per secret byte. This previously looped to
+                // MAX_VARIANTS (the row *width*, 16) instead of MAX_SECRET_LEN
+                // (the row count), leaving every row past the 16th all zero --
+                // so for any secret longer than 16 bytes the remaining bytes
+                // were shared with a degree-0 polynomial and appeared verbatim
+                // in every share.
+                for idx in 0..MAX_SECRET_LEN {
                     rng._fill_bytes(&mut coef_buf[idx]);
                 }
                 let secret_len = secret.to_byte_arr().len() as u8;

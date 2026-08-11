@@ -24,7 +24,13 @@ pub fn gf256_mul(mut a: u8, mut b: u8) -> u8 {
 
 // TODO: replace w/ lookup table for efficiency
 pub fn gf256_inv(n: u8) -> u8 {
-    for i in 1..255 {
+    // GF(256) has 255 non-zero elements, 1..=255. The range must be inclusive:
+    // `1..255` stops at 254 and never tests 255, so the one element whose
+    // inverse is 255 -- that is 28 -- silently returned 0 instead. A zero
+    // Lagrange denominator collapses the basis polynomial to zero, which broke
+    // Shamir recovery for any share subset containing two locations whose XOR
+    // was 28 (about 2% of seeds for 3-of-5).
+    for i in 1..=u8::MAX {
         if gf256_mul(n, i) == 1 {
             return i;
         }

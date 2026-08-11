@@ -84,6 +84,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: rustfmt
         run: cargo fmt --check
+      - name: test
+        run: cargo test
+      - name: test (minimal features)
+        run: cargo test --no-default-features
       - name: build bins
         run: cargo build --bins
       - name: build release

@@ -263,3 +263,71 @@ small arena or bump allocator on the embedded profile and measure with
 
 Do the migration after the test suite exists. It is the change most likely to
 break something quietly.
+
+## 10. Bugs found and fixed by the first test suite
+
+The suite that landed with this section found two correctness bugs in the
+secret-sharing stack. Both are fixed; the tests that caught them are the
+regression guards.
+
+**`gf256_inv` was wrong for exactly one element.** The search loop ran
+`for i in 1..255`, which stops at 254. GF(256) has 255 non-zero elements, so the
+one element whose inverse is 255 — that is 28 — fell off the end and the
+function returned 0 instead.
+
+A zero inverse collapses the Lagrange denominator, so `combine_shamir_shares`
+silently produced garbage for any share subset containing two locations whose
+XOR was 28. Measured before the fix: **5 of 256 seeds** for 3-of-5 produced
+share sets with failing subsets, 3 of 10 subsets failing in each. It is
+seed-dependent and therefore intermittent, which is the worst way for a
+recovery scheme to be broken. `gf1024_inv` has the same shape but its
+`1..1024` bound happens to be correct, since GF(1024) has 1023 non-zero
+elements.
+
+**Shamir coefficients were only generated for the first 16 secret bytes.**
+`coef_buf` is `[[u8; MAX_VARIANTS]; MAX_SECRET_LEN]` — 16 wide, 255 tall — and
+the fill loop iterated `0..MAX_VARIANTS`, the width, instead of
+`0..MAX_SECRET_LEN`, the height. Every row past the 16th stayed zero, so for a
+secret longer than 16 bytes the remaining bytes were shared with a degree-0
+polynomial whose value at every x is the secret byte itself.
+
+Measured before the fix: for a 32-byte secret, **16 of 32 bytes appeared
+verbatim in every share**. Any single share disclosed half the key. This is the
+more serious of the two, because nothing fails — recovery still works, so no
+amount of round-trip testing would have caught it. The test that does catch it
+asserts that no secret byte appears identically across all shares.
+
+Shares for secrets of 16 bytes or fewer are bit-identical before and after the
+fix: locations are drawn from the RNG first, and rows 0..16 receive the same
+stream either way. Only the previously-unprotected bytes change.
+
+## 11. Test coverage
+
+82 tests, 3 ignored. Every ignored test names the bug it is waiting on and
+fails deliberately when that bug is fixed, so the gap cannot be quietly lost:
+
+| Ignored test | Waiting on |
+|---|---|
+| `varstring_roundtrips_up_to_capacity` | `VarString511`'s one-byte length prefix (changes the packed layout, deferred to the Var* extraction) |
+| `hash_inputs_are_unambiguously_framed` | length-prefixed hash inputs |
+| `pbkdf_default_cost_is_defensible` | a real password KDF |
+
+`wrong_key_panics_instead_of_returning_an_error` is `#[should_panic]` rather
+than ignored: it asserts today's behaviour so that converting the password
+cipher to `Result` fails there on purpose.
+
+External ground truth, rather than self-consistency, where it exists:
+
+- **BIP-39** against five canonical vectors from the specification, including
+  both 128-bit and 256-bit entropy. All pass — the implementation is spec
+  compatible.
+- **TOTP** against the RFC 6238 Appendix B vectors for SHA-1, SHA-256 and
+  SHA-512. All pass.
+- **GF(256) and GF(1024)** checked exhaustively for inverses, involution,
+  identity and commutativity rather than sampled. This is what found the
+  `gf256_inv` bug.
+
+One ergonomic note worth knowing before writing more tests: generated structs
+are `#[repr(C, packed)]`, so a field cannot be referenced directly.
+`assert_eq!(cred.digits, 6)` is a compile error (E0793), not a lint — copy the
+field to a local first.

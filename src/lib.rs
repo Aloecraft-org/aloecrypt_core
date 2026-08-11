@@ -1,7 +1,12 @@
 // src/lib.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![no_std]
-#![no_main]
+// no_main is required for the WASM/bare-metal targets, but it also stops the
+// test harness emitting an entry point -- with it applied unconditionally,
+// `cargo test` fails to link with "undefined symbol: main" and the crate cannot
+// be tested at all. Gating it on `not(test)` leaves every shipped target
+// unchanged (verified against thumbv8m.main-none-eabihf and wasm32-wasip2).
+#![cfg_attr(not(test), no_main)]
 
 include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 
