@@ -112,7 +112,9 @@ fn main() {
 
     let pbkdf_password = "some_password";
     let pbkdf_salt = "some_salt";
-    let pbkdf_iters: u32 = 10000;
+    // Argon2id passes, not hash iterations -- the old SHAKE-chain 10_000 here
+    // would now mean ~40 GiB of block work.
+    let pbkdf_iters: u32 = aloecrypt_core::pkdf::PBKDF_DEFAULT_ITERS;
 
     let pbkdf_key = aloecrypt_core::pkdf::pbkdf(
         pbkdf_password.as_bytes(),

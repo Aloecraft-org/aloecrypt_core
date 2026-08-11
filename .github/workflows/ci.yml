@@ -35,6 +35,8 @@ jobs:
             flags: "--no-default-features --features bip39_words"
           - name: slip39-only
             flags: "--no-default-features --features slip39_words"
+          - name: kdf-host-only
+            flags: "--no-default-features --features host_kdf"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -110,6 +112,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: stack high-water check
         run: cargo run --release --bin stackcheck
+      # Without host_kdf the Argon2 block buffer lives on the stack; that is
+      # the frame the embedded profile actually pays for, so guard it too.
+      - name: stack high-water check (embedded KDF profile)
+        run: cargo run --release --bin stackcheck --no-default-features
 
   # The schema drives Rust, Python and TypeScript. A malformed schema does not
   # necessarily break the Rust build -- a mismatched impls entry silently drops

@@ -46,8 +46,21 @@ use aloecrypt_core::dsa::*;
 use aloecrypt_core::dsa_api::*;
 use aloecrypt_core::kem::*;
 use aloecrypt_core::kem_api::*;
+use aloecrypt_core::pkdf::*;
+use aloecrypt_core::pkdf_api::*;
 
 const KB: usize = 1024;
+
+// pbkdf's stack depends on the profile: with host_kdf the Argon2 blocks are
+// heap-allocated and only the hashing scaffolding is on the stack; without it
+// the whole 64 KiB block buffer lives in one frame. Run both:
+//
+//     cargo run --release --bin stackcheck
+//     cargo run --release --bin stackcheck --no-default-features
+#[cfg(feature = "host_kdf")]
+const PBKDF_BUDGET: (&str, usize, usize) = ("pbkdf", 16 * KB, 8 * KB);
+#[cfg(not(feature = "host_kdf"))]
+const PBKDF_BUDGET: (&str, usize, usize) = ("pbkdf", 112 * KB, 92 * KB);
 
 /// (operation, ceiling in bytes, measured floor in bytes)
 const BUDGET: &[(&str, usize, usize)] = &[
@@ -55,6 +68,7 @@ const BUDGET: &[(&str, usize, usize)] = &[
     ("dsa44", 224 * KB, 175 * KB),
     ("dsa65", 352 * KB, 274 * KB),
     ("dsa87", 528 * KB, 425 * KB),
+    PBKDF_BUDGET,
 ];
 
 fn run_op(op: &str) {
@@ -75,6 +89,14 @@ fn run_op(op: &str) {
             let kp = MlDsa87Keypair::from_seed(&seed);
             let sig = kp.sign(msg);
             assert!(kp.get_verifier().verify(msg, &sig), "dsa87 verify failed");
+        }
+        "pbkdf" => {
+            let key = pbkdf(
+                b"stackcheck password",
+                b"stackcheck salt",
+                PBKDF_DEFAULT_ITERS,
+            );
+            assert_ne!(key, EMPTY_PBKDF_KEY, "pbkdf produced an all-zero key");
         }
         "kem768" => {
             let kem_seed = [9u8; 64];

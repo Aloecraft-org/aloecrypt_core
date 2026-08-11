@@ -182,23 +182,18 @@ feature flag.
 Password-based key derivation is a **profile** decision, not a library one. Memory-hard
 derivation and a 520 KB device are mutually exclusive; a consumer that needs Argon2id
 is a hosted consumer, and a consumer with hardware-backed key storage and retry
-counting needs no password stretching at all.
+counting needs no password stretching at all. (This is now the `host_kdf`
+feature — section 17.)
 
 ## 7. Decided, not yet built
 
 **The crate ships a password KDF.** The alternative was to export none and let
 each consumer bring its own; the decision is that a cryptography library people
-reach for should not make them source a KDF separately. What exists today is
-`pbkdf`: ten iterations of a plain SHAKE-256 chain, which is not a KDF in any
-meaningful sense and must be replaced rather than tuned.
+reach for should not make them source a KDF separately. This was agreed here
+and is now built — Argon2id, profile-gated behind the unchanged `pbkdf`
+interface; the parameters and the profile split are section 17.
 
-The open part is the shape, not the question. Argon2id is the right default on a
-hosted target and impossible on a 520 KB device, so it is a profile-gated
-implementation behind one interface. `argon2` supports `no_std` with a
-caller-supplied memory block, so an embedded profile can offer real (if small)
-memory hardness rather than none — worth measuring before assuming it cannot fit.
-
-**Errors cross the wire as codes** — this was agreed here and is now built;
+**Errors cross the wire as codes** — likewise agreed here and now built;
 the convention as it exists is section 16.
 
 **Still genuinely open:** whether the Var types move to their own `no_std`
@@ -309,18 +304,17 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-86 tests, 1 ignored. Every ignored test names the bug it is waiting on and
-fails deliberately when that bug is fixed, so the gap cannot be quietly lost:
-
-| Ignored test | Waiting on |
-|---|---|
-| `pbkdf_default_cost_is_defensible` | a real password KDF |
+90 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+bug it is waiting on and fails deliberately when that bug is fixed, so a gap
+cannot be quietly lost — the list is simply empty right now.
 
 (`varstring_roundtrips_up_to_capacity` and `hash_inputs_are_unambiguously_framed`
 were on this list and now pass: the two-byte VarString prefix and length-prefixed
 hash inputs both landed. `wrong_key_returns_an_error_rather_than_aborting` was
 `#[should_panic]` until the decryptor returned `Result`, and now asserts
-`Err(AuthFailed)`.)
+`Err(AuthFailed)`. `pbkdf_default_cost_is_defensible`, the last holdout, was
+un-ignored when Argon2id landed and now asserts the profile floors of
+section 17.)
 
 External ground truth, rather than self-consistency, where it exists:
 
@@ -332,6 +326,9 @@ External ground truth, rather than self-consistency, where it exists:
 - **GF(256) and GF(1024)** checked exhaustively for inverses, involution,
   identity and commutativity rather than sampled. This is what found the
   `gf256_inv` bug.
+- **The password KDF** pinned per profile against `phc-winner-argon2`, the
+  Argon2 reference implementation (via argon2-cffi), including the salt
+  normalization — the full composition, not just the argon2 crate's own KATs.
 
 One ergonomic note worth knowing before writing more tests: generated structs
 are `#[repr(C, packed)]`, so a field cannot be referenced directly.
@@ -539,12 +536,56 @@ Built as agreed in section 7, with the details that surfaced in the doing:
   non-`Ok` raises, and a short or empty reply raises `Unspecified` rather
   than being indexed blindly.
 
+## 17. The password KDF
+
+Built as agreed in section 7: Argon2id behind the schema's existing `pbkdf`
+interface, with the details that surfaced in the doing.
+
+- **`iters` is the Argon2 pass count** (t_cost), clamped to a minimum of 1 —
+  the one tunable that crosses the wire, so the schema signature and every
+  binding are unchanged. The memory cost is **not** a parameter: it is a
+  security parameter fixed by the build profile, and a consumer that wants a
+  different working set is making a build-time decision, not a call-time one.
+- **Two profiles, one interface.** `host_kdf` (a default feature, mirroring
+  `host_rng`) runs the OWASP-recommended tier — 19 MiB, default 2 passes —
+  with the block buffer heap-allocated by the `argon2` crate. Without it the
+  blocks are a fixed 64 KiB array in one `#[inline(never)]` stack frame,
+  default 4 passes: real (if small) memory hardness rather than none, exactly
+  the "worth measuring" outcome section 7 hoped for. Measured on x86-64 the
+  embedded frame is 92 KB against a 112 KB ceiling, guarded by `stackcheck`
+  in both profiles — comfortably inside a budget whose binding constraint is
+  ML-DSA-65's 274 KB.
+- **The profiles derive different keys from the same inputs.** Inherent —
+  memory cost is an Argon2 input — and correct: a key derived at 19 MiB must
+  not be reproducible by an attacker willing to run at 64 KiB. A document
+  format that stores password-encrypted material will need to record the
+  derivation parameters alongside the salt; that belongs to the envelope
+  design (section 3).
+- **Salts are normalized, not passed through.** Argon2 rejects salts under 8
+  bytes; this API has always accepted any salt including none, and the wire
+  cannot retroactively forbid short ones. Every salt is therefore hashed to a
+  fixed 32 bytes through the crate's length-framed hash under the domain
+  string `aloecrypt.pkdf.salt.v1` — which also domain-separates the KDF from
+  every other use of the hash, and gives the derivation a version to bump if
+  it ever has to change.
+- **The profile constants are validated at compile time** — `Params::new` is
+  `const fn`, so a profile whose constants violate Argon2's bounds fails to
+  build rather than panicking on first use. The functions stay infallible in
+  the schema: with the constants proven and the pass count clamped, the only
+  reachable runtime failure is the hosted profile failing to allocate 19 MiB,
+  which no status code makes recoverable.
+- **Outputs are pinned per profile** against the Argon2 reference
+  implementation (section 11). The old SHAKE-256 chain's outputs are gone,
+  which changes every password-derived key — the last of the
+  "worth doing before anything is persisted" breaks, and the reason it
+  shipped ahead of the document layer.
+
 ## Next
 
 In rough order of value, and roughly independent of each other:
 
-1. **Password KDF** (section 7). Decided in principle, not built. Closes the
-   last `#[ignore]`d test.
+1. ~~Password KDF~~ — **done**, section 17. Argon2id, profile-gated, closed
+   the last `#[ignore]`d test.
 2. ~~Wire error codes~~ — **done**, section 16. `authorize_recovery` and the
    password decryptor return errors across the wire; the lint guards the
    status contract.
@@ -554,7 +595,7 @@ In rough order of value, and roughly independent of each other:
    signing bytes, `AloecryptSignable`. This is the phase that makes certs, CSRs
    and revocations one problem instead of four, and nothing after it can start
    until it exists.
-5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (482 checks
+5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (925 checks
    now, grown with the status contract): every `impls` pair resolving, every
    referenced type existing, enum discriminants unique and defaults present,
    no name shadowed across namespaces, and a cross-check against what

@@ -12,9 +12,9 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 86 tests
+cargo test                             # 90 tests
 cargo run --release --bin align        # integration smoke test
-cargo run --release --bin stackcheck   # stack budget guard
+cargo run --release --bin stackcheck   # stack budget guard (also run --no-default-features)
 make lint                              # schema validation (run before generating)
 make generate                          # Python bindings (needs pydantic)
 ```
@@ -52,6 +52,11 @@ carrying SHA-1 for compatibility is the reference example.
 every target. The wordlists are opt-in and the recovery arithmetic works without
 them. `host_rng` gates `getrandom`, which has no bare-metal backend — the
 library itself never needs entropy, since `AloeRng` is seeded by the caller.
+`host_kdf` gates the password KDF's memory cost: Argon2id at 19 MiB via the
+allocator with it, a 64 KiB stack block without it. The two profiles derive
+**different keys** from the same inputs — deliberate, see DESIGN section 17 —
+and both outputs are pinned against the Argon2 reference implementation in
+`tests/symmetric.rs`.
 
 **The schema is the source of truth**, and names in it resolve by lookup with
 no validation in the pipeline itself — an unresolved name is silently skipped
@@ -104,7 +109,7 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
-| `tests/` | 86 tests; external vectors where they exist |
+| `tests/` | 90 tests; external vectors where they exist |
 
 ## Testing conventions
 
@@ -112,16 +117,16 @@ External ground truth is preferred over self-consistency, and exhaustive over
 sampled where the domain is small — an exhaustive GF(256) check is what found a
 one-element bug in `gf256_inv` that a random sample would have missed 99.6% of
 the time. BIP-39 is checked against the specification vectors and TOTP against
-RFC 6238.
+RFC 6238; the password KDF is pinned per profile against the Argon2 reference
+implementation.
 
 An `#[ignore]`d test names the decision or defect it is waiting on, so the gap
-cannot be quietly lost. It should fail deliberately once that lands. One
-remains: `pbkdf_default_cost_is_defensible`.
+cannot be quietly lost. It should fail deliberately once that lands. None
+remain at present.
 
 ## Where to pick up
 
-See "Next" in `doc/DESIGN.md`. In short: the password KDF is decided in
-principle (the crate ships one) but not implemented, and the document layer —
-armour, envelope, canonical signing bytes — is the next substantive phase. The
+See "Next" in `doc/DESIGN.md`. In short: the document layer — armour, envelope,
+canonical signing bytes — is the next substantive phase. The password KDF, the
 wire error-code convention and the `Copy` removal from key structs are done;
-the zeroize wipe they unblock belongs to the identity layer.
+the zeroize wipe the last of those unblocks belongs to the identity layer.

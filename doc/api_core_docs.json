@@ -767,16 +767,16 @@
         "functions": [
             {
                 "name": "pbkdf",
-                "description": "Derives a 32-byte symmetric key from a password and salt using a password-based key derivation function with an explicit iteration count. Higher iteration counts increase resistance to brute-force attacks at the cost of derivation time.",
+                "description": "Derives a 32-byte symmetric key from a password and salt with Argon2id. iters is the Argon2 pass count (t_cost); the memory cost is fixed by the build profile (19 MiB hosted, 64 KiB embedded), so the same inputs derive different keys on different profiles -- by design, since memory cost is a security parameter. The salt is normalized through a domain-separated hash, so any length including zero is accepted.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes to derive from."},
-                    {"name": "salt",     "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
-                    {"name": "iters",    "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                    {"name": "salt",     "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials. Any length is accepted; it is normalized to 32 bytes internally."},
+                    {"name": "iters",    "description": "Argon2 pass count (t_cost). Values below 1 are clamped to 1. Higher values increase resistance to offline attacks linearly in derivation time; the profile default is the recommended starting point."}
                 ]
             },
             {
                 "name": "salted_pbkdf",
-                "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
+                "description": "Derives a 32-byte key from a password and salt using the build profile's default Argon2id pass count. Use when you do not need to control the pass count explicitly.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."},
                     {"name": "salt",     "description": "A per-credential random salt."}
@@ -784,15 +784,15 @@
             },
             {
                 "name": "pbkdf_with_iters",
-                "description": "Derives a 32-byte key from a password using an explicit iteration count but no external salt. Suitable for contexts where a salt is embedded in or derived from the password itself.",
+                "description": "Derives a 32-byte key from a password with an explicit Argon2id pass count but no external salt. Suitable for contexts where a salt is embedded in or derived from the password itself.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."},
-                    {"name": "iters",    "description": "Number of PBKDF iterations."}
+                    {"name": "iters",    "description": "Argon2 pass count (t_cost); values below 1 are clamped to 1."}
                 ]
             },
             {
                 "name": "simple_pbkdf",
-                "description": "Derives a 32-byte key from a password using library defaults for both salt and iteration count. Provided for convenience in low-security or testing contexts; prefer salted_pbkdf or pbkdf in production.",
+                "description": "Derives a 32-byte key from a password using profile defaults for both salt and pass count. Without a salt, equal passwords derive equal keys; prefer salted_pbkdf or pbkdf wherever a salt can be stored.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."}
                 ]

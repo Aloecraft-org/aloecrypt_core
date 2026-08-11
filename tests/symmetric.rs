@@ -1,9 +1,5 @@
 // tests/symmetric.rs
 // Hash, HMAC, the password KDF, and the chunked password cipher.
-//
-// Several tests here pin behaviour that is known to be wrong. They are marked
-// and explained rather than deleted, so the suite records the gap and fails
-// loudly when someone changes it -- see doc/DESIGN.md.
 
 use aloecrypt_core::error::{StatusCode, StatusCodeEnum};
 use aloecrypt_core::hash::*;
@@ -68,29 +64,82 @@ fn hash_inputs_are_unambiguously_framed() {
 
 #[test]
 fn pbkdf_is_deterministic_and_salt_dependent() {
-    assert_eq!(pbkdf(b"pw", b"salt", 10), pbkdf(b"pw", b"salt", 10));
-    assert_ne!(pbkdf(b"pw", b"salt", 10), pbkdf(b"pw", b"pepper", 10));
-    assert_ne!(pbkdf(b"pw", b"salt", 10), pbkdf(b"px", b"salt", 10));
+    assert_eq!(pbkdf(b"pw", b"salt", 1), pbkdf(b"pw", b"salt", 1));
+    assert_ne!(pbkdf(b"pw", b"salt", 1), pbkdf(b"pw", b"pepper", 1));
+    assert_ne!(pbkdf(b"pw", b"salt", 1), pbkdf(b"px", b"salt", 1));
 }
 
 #[test]
 fn pbkdf_iteration_count_changes_the_output() {
     assert_ne!(
-        pbkdf(b"pw", b"salt", 10),
-        pbkdf(b"pw", b"salt", 11),
+        pbkdf(b"pw", b"salt", 1),
+        pbkdf(b"pw", b"salt", 2),
         "iteration count had no effect"
     );
 }
 
 #[test]
-#[ignore = "KNOWN GAP: PBKDF_DEFAULT_ITERS is 10 iterations of a plain SHAKE-256 \
-            chain -- no memory hardness and effectively no stretching. Un-ignore \
-            when a real KDF lands (see doc/DESIGN.md section 6)."]
-fn pbkdf_default_cost_is_defensible() {
-    assert!(
-        PBKDF_DEFAULT_ITERS >= 100_000,
-        "default KDF cost is {PBKDF_DEFAULT_ITERS} iterations"
+fn pbkdf_accepts_any_salt_length() {
+    // Argon2 itself rejects salts under 8 bytes; the API contract here has
+    // always been "any salt, including none", which the salt normalization
+    // preserves. An empty salt must work and still differ from a present one.
+    let none = pbkdf(b"pw", b"", 1);
+    let long = pbkdf(b"pw", &[7u8; 100], 1);
+    assert_ne!(none, long, "salt ignored after normalization");
+    assert_eq!(
+        none,
+        pbkdf_with_iters(b"pw", 1),
+        "empty-salt paths disagree"
     );
+}
+
+#[test]
+fn pbkdf_zero_iterations_clamps_rather_than_panics() {
+    // t_cost 0 is outside Argon2's domain; the wire can still send it. It
+    // must derive at the minimum pass count, not take the module down.
+    assert_eq!(pbkdf(b"pw", b"salt", 0), pbkdf(b"pw", b"salt", 1));
+}
+
+// This was #[ignore]d while pbkdf was ten iterations of a plain SHAKE-256
+// chain -- no memory hardness, no stretching. It now derives with Argon2id,
+// and these are the floors the defaults must not quietly sink below.
+#[test]
+fn pbkdf_default_cost_is_defensible() {
+    #[cfg(feature = "host_kdf")]
+    {
+        // The OWASP-recommended Argon2id tier: 19 MiB, 2 passes.
+        assert!(PBKDF_M_COST_KIB >= 19 * 1024, "hosted memory cost lowered");
+        assert!(PBKDF_DEFAULT_ITERS >= 2, "hosted pass count lowered");
+    }
+    #[cfg(not(feature = "host_kdf"))]
+    {
+        // Memory is capped by the device; passes partially compensate.
+        assert!(PBKDF_M_COST_KIB >= 64, "embedded memory cost lowered");
+        assert!(PBKDF_DEFAULT_ITERS >= 4, "embedded pass count lowered");
+    }
+}
+
+// Pinned against argon2-cffi (the phc-winner-argon2 C reference): Argon2id
+// v19, p=1, 32-byte output, salt = keccak256 of the length-framed fields
+// ("", "salt", "aloecrypt.pkdf.salt.v1"). Any change here changes every key
+// ever derived from a password, so drift must be deliberate, not accidental.
+#[test]
+fn pbkdf_output_matches_the_reference_implementation() {
+    #[cfg(feature = "host_kdf")]
+    // m=19456, t=1
+    const EXPECTED: [u8; PBKDF_KEY_SZ] = [
+        0x3f, 0x0c, 0xc3, 0x6f, 0x09, 0x41, 0xf7, 0xb8, 0xba, 0xa7, 0x98, 0x57, 0x10, 0x12, 0x19,
+        0x1c, 0x17, 0x94, 0x66, 0xdb, 0xc7, 0x9a, 0x71, 0x32, 0x56, 0x8a, 0x1d, 0xbd, 0x72, 0xa2,
+        0xa7, 0x9c,
+    ];
+    #[cfg(not(feature = "host_kdf"))]
+    // m=64, t=1
+    const EXPECTED: [u8; PBKDF_KEY_SZ] = [
+        0x97, 0x56, 0x3a, 0x90, 0x8d, 0xe9, 0x27, 0x61, 0x70, 0x8c, 0x81, 0xa1, 0x79, 0xbf, 0xf4,
+        0x37, 0x3f, 0xee, 0x62, 0x16, 0xb6, 0x9b, 0x15, 0x68, 0x9d, 0xb9, 0x01, 0x21, 0x18, 0x99,
+        0x95, 0x09,
+    ];
+    assert_eq!(pbkdf(b"password", b"salt", 1), EXPECTED);
 }
 
 // ---------------------------------------------------------- password cipher

@@ -12,7 +12,7 @@ keywords = ["crypto"]
 categories = [ "cryptography", "no-std" ]
 
 [features]
-default = ["slip39_words", "bip39_words", "host_rng"]
+default = ["slip39_words", "bip39_words", "host_rng", "host_kdf"]
 slip39_words = []
 bip39_words = []
 # Host entropy source, used only to seed the example binaries. The library never
@@ -20,6 +20,19 @@ bip39_words = []
 # backend for bare-metal or wasm32-unknown-unknown, so an unconditional
 # dependency on it makes those targets unbuildable. Gated so it can be left out.
 host_rng = ["dep:getrandom"]
+# Host-scale password KDF memory. With this on, pbkdf runs Argon2id at the
+# OWASP-recommended 19 MiB, which needs an allocator; without it, the memory
+# cost drops to a fixed block that lives on the stack, sized for the embedded
+# target. The interface is identical either way -- see src/pkdf.rs.
+host_kdf = ["argon2/alloc"]
+
+# Argon2id in an unoptimized build is slow enough to dominate the test suite,
+# and there is nothing of ours to debug inside it. Optimize just the KDF and
+# its hash even in dev, the same way most crates treat their crypto backends.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.release]
 opt-level = "z"   # Optimizes aggressively for binary size rather than speed.
@@ -39,6 +52,7 @@ rand_core = { version = "0.10" }
 # backend for bare-metal or wasm32-unknown-unknown. The library only uses
 # AeadInPlace, so none of the default features are needed.
 chacha20poly1305 = { version = "0.10", default-features = false }
+argon2 = { version = "0.6.0-rc.8", default-features = false }
 sha3 = {version = "0.11.0-rc.7", default-features = false}
 digest = {version = "0.11.2", features = ["mac"]}
 hmac = "0.13.0"
