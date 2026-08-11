@@ -5,8 +5,8 @@
 // and explained rather than deleted, so the suite records the gap and fails
 // loudly when someone changes it -- see doc/DESIGN.md.
 
+use aloecrypt_core::error::AloecryptError;
 use aloecrypt_core::hash::*;
-use aloecrypt_core::hash_api::*;
 use aloecrypt_core::password::*;
 use aloecrypt_core::password_api::*;
 use aloecrypt_core::pkdf::*;
@@ -44,16 +44,23 @@ fn domain_separation_actually_separates() {
 }
 
 #[test]
-#[ignore = "KNOWN BUG: hash() concatenates salt|ikm|domain with no length \
-            prefixes, so different splits of the same bytes collide. Un-ignore \
-            when the inputs are length-prefixed."]
 fn hash_inputs_are_unambiguously_framed() {
-    // hash("ab","c",d) and hash("a","bc",d) are different logical inputs that
-    // currently produce the same digest.
+    // hash("ab","c",d) and hash("a","bc",d) are different logical inputs and
+    // must not collide. They did until the fields were length-prefixed.
     assert_ne!(
         hash(b"ab", b"c", "d"),
         hash(b"a", b"bc", "d"),
         "ambiguous framing: salt/ikm boundary is not encoded"
+    );
+    assert_ne!(
+        hash(b"a", b"bcd", "e"),
+        hash(b"abc", b"d", "e"),
+        "ambiguous framing at a different split"
+    );
+    assert_ne!(
+        hmac(b"ab", b"key", "c"),
+        hmac(b"a", b"key", "bc"),
+        "ambiguous framing between the hmac salt and domain"
     );
 }
 
@@ -105,7 +112,11 @@ fn encrypt_all(data: &[u8], key_byte: u8) -> Vec<u8> {
     out
 }
 
-fn decrypt_all(ciphertext: &[u8], plain_len: usize, key_byte: u8) -> Vec<u8> {
+fn decrypt_all(
+    ciphertext: &[u8],
+    plain_len: usize,
+    key_byte: u8,
+) -> Result<Vec<u8>, AloecryptError> {
     let mut cipher = PasswordCipher {
         key: [key_byte; PBKDF_KEY_SZ],
         nonce: [9u8; PASSWORD_NONCE_SZ],
@@ -115,14 +126,14 @@ fn decrypt_all(ciphertext: &[u8], plain_len: usize, key_byte: u8) -> Vec<u8> {
     };
     let mut out = Vec::new();
     loop {
-        let result = password_decrypt_next(ciphertext, &mut cipher);
+        let result = password_decrypt_next(ciphertext, &mut cipher)?;
         let n = result.n_bytes as usize;
         out.extend_from_slice(&result.next_chunk[..n.min(result.next_chunk.len())]);
         if result.is_done != 0 {
             break;
         }
     }
-    out
+    Ok(out)
 }
 
 #[test]
@@ -130,7 +141,7 @@ fn password_cipher_roundtrips_across_sizes() {
     for len in [1usize, 100, 511, 512, 513, 1024, 2000] {
         let data: Vec<u8> = (0..len).map(|i| (i * 31 % 256) as u8).collect();
         let ciphertext = encrypt_all(&data, 0xA5);
-        let recovered = decrypt_all(&ciphertext, len, 0xA5);
+        let recovered = decrypt_all(&ciphertext, len, 0xA5).expect("correct key must decrypt");
         assert_eq!(recovered, data, "password cipher round trip at {len} bytes");
     }
 }
@@ -158,14 +169,27 @@ fn size_accounting_is_self_consistent() {
 }
 
 #[test]
-#[should_panic]
-fn wrong_key_panics_instead_of_returning_an_error() {
-    // KNOWN BUG: password_decrypt_next_chunk ends in .expect("Decryption
-    // failed"), so an authentication failure aborts rather than returning Err.
-    // Under panic="abort" that takes the whole module down. This test asserts
-    // the current behaviour so that fixing it fails here deliberately -- at
-    // which point replace it with a Result assertion.
+fn wrong_key_returns_an_error_rather_than_aborting() {
+    // This used to be #[should_panic]: the chunk decryptor ended in
+    // .expect("Decryption failed"), which under panic = "abort" took down the
+    // whole module on a wrong password.
     let data: Vec<u8> = (0..256).map(|i| (i % 256) as u8).collect();
     let ciphertext = encrypt_all(&data, 0x11);
-    let _ = decrypt_all(&ciphertext, data.len(), 0x22);
+    assert_eq!(
+        decrypt_all(&ciphertext, data.len(), 0x22),
+        Err(AloecryptError::DecryptAuthFailed),
+        "a wrong key must be reported, not panicked on"
+    );
+}
+
+#[test]
+fn altered_ciphertext_is_rejected() {
+    let data: Vec<u8> = (0..256).map(|i| (i % 256) as u8).collect();
+    let mut ciphertext = encrypt_all(&data, 0x33);
+    ciphertext[10] ^= 0x01;
+    assert_eq!(
+        decrypt_all(&ciphertext, data.len(), 0x33),
+        Err(AloecryptError::DecryptAuthFailed),
+        "a flipped ciphertext bit must fail authentication"
+    );
 }

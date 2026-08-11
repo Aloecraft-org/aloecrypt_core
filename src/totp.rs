@@ -5,10 +5,12 @@ use super::*;
 use data_encoding::BASE32_NOPAD;
 use url::Url;
 
+// The hash types are used only as HMAC parameters, so the Digest traits
+// themselves are not needed in scope.
 use hmac::{Hmac, KeyInit, Mac};
-use sha1::{Digest as Sha1Digest, Sha1};
-use sha2::{Digest as Sha2Digest, Sha256, Sha512};
-use sha3::{Digest as Sha3Digest, Keccak256, Sha3_256};
+use sha1::Sha1;
+use sha2::{Sha256, Sha512};
+use sha3::{Keccak256, Sha3_256};
 
 impl ITotpCredential for TotpCredential {
     fn error(message: &str) -> Self {
@@ -33,7 +35,7 @@ impl ITotpCredential for TotpCredential {
     }
     fn from_uri(uri_str: &str) -> Self {
         match Url::parse(uri_str) {
-            Err(parse_error) => {
+            Err(_parse_error) => {
                 return TotpCredential::error("Invalid URL format");
             }
             Ok(url) => {
@@ -46,7 +48,7 @@ impl ITotpCredential for TotpCredential {
 
                 // Extract Account and Issuer from the path (Path looks like "/Issuer:AccountName")
                 let path = url.path().trim_start_matches('/');
-                let (issuer_label, user) = if let Some((i, u)) = path.split_once(':') {
+                let (_issuer_label, user) = if let Some((i, u)) = path.split_once(':') {
                     (i, u)
                 } else {
                     ("", path)
@@ -89,7 +91,7 @@ impl ITotpCredential for TotpCredential {
                         match BASE32_NOPAD
                             .decode_mut(input_bytes, &mut secret_bytes[..expected_len])
                         {
-                            Err(decode_error) => TotpCredential::error("Invalid Base32 secret"),
+                            Err(_decode_error) => TotpCredential::error("Invalid Base32 secret"),
                             Ok(secret_len) => {
                                 return TotpCredential {
                                     secret: VarByte255::from_byte_arr(&secret_bytes[0..secret_len]),
@@ -165,7 +167,7 @@ impl ITotpCredential for TotpCredential {
         let offset = (digest[hash_len - 1] & 0xf) as usize;
         let code_bytes = &digest[offset..offset + 4];
 
-        let mut code = ((code_bytes[0] as u32 & 0x7f) << 24)
+        let code = ((code_bytes[0] as u32 & 0x7f) << 24)
             | ((code_bytes[1] as u32) << 16)
             | ((code_bytes[2] as u32) << 8)
             | (code_bytes[3] as u32);

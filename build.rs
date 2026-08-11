@@ -217,6 +217,12 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
             writeln!(out, "{}}}", indent);
             writeln!(out);
 
+            // Members are named in the schema as PascalCase variants (NoValue,
+            // Attribute, ...), which is the right reading for an enum but trips
+            // non_upper_case_globals once emitted as associated consts. The
+            // naming is a schema decision, so silence the lint rather than
+            // rewriting the API surface.
+            writeln!(out, "{}#[allow(non_upper_case_globals)]", indent);
             writeln!(
                 out,
                 "{}impl {} {{",

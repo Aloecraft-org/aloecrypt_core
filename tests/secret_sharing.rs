@@ -3,7 +3,6 @@
 // threshold recovers, surplus recovers, and sub-threshold does not.
 
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::fixed_byte::*;
 use aloecrypt_core::rng_api::*;
 use aloecrypt_core::shamir::*;
 use aloecrypt_core::slip39::*;

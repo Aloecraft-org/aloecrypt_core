@@ -8,17 +8,31 @@ type HmacKeccak256 = Hmac<sha3::Keccak256>;
 
 // pub trait Hashable { fn hashing_material() -> &[u8]; }
 
+/// Length-prefix each field so the concatenation is injective.
+///
+/// Without this, hash("ab", "c", d) and hash("a", "bc", d) are the same bytes
+/// and therefore the same digest, even though they are different logical
+/// inputs. Every field gets a u64 little-endian length in front of it.
+fn absorb_framed(hasher: &mut Keccak256, field: &[u8]) {
+    hasher.update(&(field.len() as u64).to_le_bytes());
+    hasher.update(field);
+}
+
 pub fn hash(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hash256 {
     let mut hasher = Keccak256::new();
-    hasher.update(salt);
-    hasher.update(ikm);
-    hasher.update(domain_info.as_bytes());
+    absorb_framed(&mut hasher, salt);
+    absorb_framed(&mut hasher, ikm);
+    absorb_framed(&mut hasher, domain_info.as_bytes());
     hasher.finalize().into()
 }
 
+/// `ikm` is the HMAC key here; `salt` and `domain_info` form the message and are
+/// length-prefixed for the same reason as in `hash`.
 pub fn hmac(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hmac256 {
     let mut mac = HmacKeccak256::new_from_slice(ikm).expect("HMAC can take key of any size");
+    mac.update(&(salt.len() as u64).to_le_bytes());
     mac.update(salt);
+    mac.update(&(domain_info.len() as u64).to_le_bytes());
     mac.update(domain_info.as_bytes());
     let result = mac.finalize();
     (*result.as_bytes()).into()

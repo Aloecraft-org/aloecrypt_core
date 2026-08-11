@@ -6,7 +6,6 @@
 // endorsement of SHA-1; they are the compatibility contract.
 
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::totp::*;
 use aloecrypt_core::totp_api::*;
 
 /// RFC 6238 seeds, base32-encoded for the otpauth URI.

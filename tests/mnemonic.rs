@@ -4,12 +4,12 @@
 
 use aloecrypt_core::aloecrypt_api::*;
 use aloecrypt_core::bip39::*;
-use aloecrypt_core::fixed_byte::*;
 use aloecrypt_core::slip39::*;
 
 /// Canonical BIP-39 vectors (entropy -> mnemonic), from the specification's
 /// English test set. These are external ground truth: if they fail, the
 /// implementation is not BIP-39 compatible regardless of whether it round trips.
+#[cfg(feature = "bip39_words")]
 const BIP39_VECTORS: &[(&[u8], &str)] = &[
     (
         &[0x00; 16],

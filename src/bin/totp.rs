@@ -1,5 +1,4 @@
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::totp::*;
 use aloecrypt_core::totp_api::*;
 
 fn main() {

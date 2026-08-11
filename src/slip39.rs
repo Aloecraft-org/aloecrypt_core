@@ -1,8 +1,6 @@
 use super::aloecrypt_api::*;
-use super::fixed_byte::*;
 use super::galois::*;
 use super::reedsolomon::*;
-use super::rng::*;
 use crate::rng_api::*;
 
 const MAX_VARIANTS: usize = 33;
@@ -13,8 +11,6 @@ pub fn to_slip39_secret(data: &[u8]) -> VarU16_255 {
         data.len() % 2 == 0,
         "to_slip39 must be an even number of bytes"
     );
-    let mut buf = [0u16; 255];
-
     let mut data_words = _bytes_to_u16_10bit(data);
     let checksum = create_slip39_rs1024_checksum(&data_words.to_u16_arr());
     let data_len = data_words.value[0];
@@ -139,7 +135,7 @@ macro_rules! impl_create_slip39_shares {
                     secret_buf[i].value[0] = secret_len + 1;
                     secret_buf[i].value[2..4].copy_from_slice(&location_buf[i].to_le_bytes());
                 }
-                _create_n_shares(secret, threshold, rng, coef_buf, &mut secret_buf, &location_buf);
+                _create_n_shares(secret, threshold, &coef_buf, &mut secret_buf, &location_buf);
                 secret_buf
             }
         )*
@@ -163,11 +159,13 @@ impl_create_slip39_shares! {
     create_16_slip39_shares, 16
 }
 
+// coef_buf is read-only here and is 8,160 bytes; taking it by reference avoids
+// copying it onto the stack. The rng parameter was unused -- coefficients are
+// drawn by the caller.
 fn _create_n_shares(
     secret: VarU16_255,
     threshold: u8,
-    mut rng: AloeRng,
-    mut coef_buf: [[u16; MAX_VARIANTS]; MAX_SECRET_LEN],
+    coef_buf: &[[u16; MAX_VARIANTS]; MAX_SECRET_LEN],
     secret_buf: &mut [VarU16_255],
     location_buf: &[u16],
 ) {

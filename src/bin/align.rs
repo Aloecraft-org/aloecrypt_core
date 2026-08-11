@@ -6,7 +6,7 @@ use rand_core::{Rng, RngCore};
 
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
-    getrandom::getrandom(&mut seed);
+    getrandom::getrandom(&mut seed).expect("host entropy source failed");
     AloeRng::new(seed)
 }
 
@@ -159,7 +159,8 @@ fn main() {
         let result = aloecrypt_core::password::password_decrypt_next(
             &encrypted_payload,
             &mut decrypt_cipher,
-        );
+        )
+        .expect("decrypting material we just encrypted must authenticate");
 
         let valid_bytes = result.n_bytes as usize;
         decrypted_payload.extend_from_slice(&result.next_chunk[..valid_bytes]);

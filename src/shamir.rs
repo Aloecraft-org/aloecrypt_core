@@ -1,7 +1,5 @@
 use super::aloecrypt_api::*;
-use super::fixed_byte::*;
 use super::galois::*;
-use super::rng::*;
 use super::rng_api::*;
 
 const MAX_VARIANTS: usize = 16;
@@ -51,7 +49,7 @@ macro_rules! impl_create_shamir_shares {
                     secret_buf[i].value[0] = secret_len + 1;
                     secret_buf[i].value[1] = location_buf[i];
                 }
-                _create_n_shares(secret, threshold, rng, coef_buf, &mut secret_buf, &location_buf);
+                _create_n_shares(secret, threshold, &coef_buf, &mut secret_buf, &location_buf);
                 secret_buf
             }
         )*
@@ -75,11 +73,13 @@ impl_create_shamir_shares! {
     create_16_shamir_shares, 16
 }
 
+// coef_buf is read-only here and is 4,080 bytes; taking it by reference avoids
+// copying it onto the stack. The rng parameter was unused -- coefficients are
+// drawn by the caller.
 fn _create_n_shares(
     secret: VarByte255,
     threshold: u8,
-    mut rng: AloeRng,
-    mut coef_buf: [[u8; MAX_VARIANTS]; MAX_SECRET_LEN],
+    coef_buf: &[[u8; MAX_VARIANTS]; MAX_SECRET_LEN],
     secret_buf: &mut [VarByte255],
     location_buf: &[u8],
 ) {

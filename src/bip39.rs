@@ -1,6 +1,5 @@
 use super::aloecrypt_api::*;
-use super::fixed_byte::*;
-use sha2::{Digest as Sha2Digest, Sha256, Sha512};
+use sha2::{Digest as Sha2Digest, Sha256};
 
 pub fn to_bip39_secret(data: &[u8]) -> VarU16_255 {
     // Trust the caller right now for simplicity

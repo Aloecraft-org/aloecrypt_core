@@ -200,29 +200,29 @@ representable outcome rather than a hole in the type.
 
 ## 8. Known gaps
 
-Recorded here because they are silent — nothing fails loudly, the output is just
-missing or untested.
+**Fallible functions that cross the wire still panic.** The plugin wire format
+has no error channel: every export returns raw bytes with no discriminant. So a
+wire-exported function cannot return a `Result` until there is an agreed
+representation for an error crossing that boundary, and that decision is open.
 
-**The crate cannot be tested.** `cargo test` does not fail on an assertion, it
-fails to link: `rust-lld: error: undefined symbol: main`. `lib.rs` carries
-`#![no_main]`, so the test harness cannot emit an entry point. There is no
-`tests/` directory and no unit test anywhere; the only verification the repo has
-had is three example binaries that print SUCCESS. That is why both mnemonic
-binaries were broken on `main` without anyone noticing.
+`src/error.rs` exists and is used, but only on functions that are *not*
+exported through the schema — the password chunk decryptor is fallible now.
+`authorize_recovery` is the one exported function that still ends in an
+`assert_eq!` on a MAC, and it stays that way deliberately rather than being
+given a representation nobody has agreed to. That comparison is also not
+constant time.
 
-`#![cfg_attr(not(test), no_main)]` fixes it — verified: an integration test
-compiles and passes, and the host, `thumbv8m.main-none-eabihf` and
-`wasm32-wasip2` builds are unaffected. `no_main` is meaningful for a bare-metal
-binary, not for an rlib. This should be the first change of the next phase,
-because everything else planned is a change to cryptographic code.
-
-
-**Schema entries are matched by name with no validation.** A mismatched `impls`
-pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the other
-way round — resolves to nothing and silently drops every export for that
+**Schema entries are matched by name with no validation.** A mismatched
+`impls` pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the
+other way round — resolves to nothing and silently drops every export for that
 namespace. That cost all twenty `aloecrypt_api` exports until it was found. A
 schema that is also a specification wants a lint pass: every `impls` pair
 resolving, every referenced type existing, every struct's size known.
+
+**The TypeScript generator cannot run.** `TypeScriptGenerator` leaves
+`emit_namespace_wrappers` unimplemented and its `main()` reads a path that does
+not exist. Pre-existing, and matches the original repo's "partial for
+typescript" note; `make generate` only runs the Python generator.
 
 ## 9. Upstream, and where the stack actually goes
 
@@ -379,3 +379,36 @@ and separately that every generated struct default-constructs, packs to exactly
 its declared `SIZE`, and survives an unpack — 31 structs at present. Between
 them those two checks catch a struct being dropped and a field default that
 disagrees with the packing code, neither of which breaks the Rust build.
+
+## 13. Hardening pass
+
+**The tree is warning-clean** across every feature configuration and target, so
+CI now sets `RUSTFLAGS: -D warnings` and a new warning is a build failure. Of
+the 69 warnings this started with, 48 were in generated code: schema enum
+members are PascalCase, which is the right reading for a variant but trips
+`non_upper_case_globals` once emitted as an associated const. The naming is a
+schema decision, so `build.rs` emits an `allow` for that block rather than
+shouting the API.
+
+Two of the hand-written warnings were worth more than a lint fix. Both
+`_create_n_shares` functions took their coefficient buffer **by value** — 4,080
+bytes for Shamir, 8,160 for SLIP-39 — copied onto the stack purely to be read.
+Both now take it by reference. Both also took an `rng` parameter they never
+used, since coefficients are drawn by the caller. On a part with 520 KB of SRAM
+an 8 KB gratuitous copy is worth removing.
+
+**Authenticated decryption returns an error instead of aborting.**
+`password_decrypt_next_chunk` ended in `.expect("Decryption failed")`, so a
+wrong password took the module down under `panic = "abort"`. It now returns
+`Result<_, AloecryptError>`. The error type carries no detail about *why* on
+purpose — for authenticated decryption the only safe answer is that it did not
+authenticate. The encrypt path keeps its `expect` with a comment explaining why
+it is unreachable: `encrypt_in_place_detached` only fails when the buffer
+exceeds the AEAD limit, and the chunk is a fixed size.
+
+**Hash inputs are length-prefixed.** `hash(salt, ikm, domain)` was a bare
+concatenation, so `hash("ab","c",d)` and `hash("a","bc",d)` produced the same
+digest from different logical inputs. Every field now carries a `u64`
+little-endian length. `hmac` gets the same treatment for its salt and domain.
+This changes every derived value in the crate — addresses, recovery secrets —
+which is why it was worth doing before anything is persisted.

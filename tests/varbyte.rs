@@ -5,7 +5,6 @@
 // concern, not just an internal detail.
 
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::fixed_byte::*;
 
 // ---------------------------------------------------------------- VarByte255
 

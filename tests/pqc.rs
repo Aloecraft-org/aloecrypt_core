@@ -2,9 +2,7 @@
 // ML-DSA signing and ML-KEM encapsulation: determinism from a seed, round
 // trips, and the negative cases that matter.
 
-use aloecrypt_core::dsa::*;
 use aloecrypt_core::dsa_api::*;
-use aloecrypt_core::kem::*;
 use aloecrypt_core::kem_api::*;
 use aloecrypt_core::recovery::*;
 use aloecrypt_core::recovery_api::*;

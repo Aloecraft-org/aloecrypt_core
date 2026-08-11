@@ -11,9 +11,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # NOT set to "-D warnings": the crate currently emits 69 warnings (mostly
-  # unused imports and non-upper-case generated consts). Turn this on once
-  # they are cleared, or it just trains people to ignore a red pipeline.
+  # The tree is warning-clean across every feature configuration and target, so
+  # a new warning is a regression and should fail the build.
+  RUSTFLAGS: -D warnings
 
 jobs:
   # A feature flag that cannot be turned off is not a feature flag. The library

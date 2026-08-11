@@ -1,13 +1,12 @@
 use aloecrypt_core::aloecrypt_api::*;
 use aloecrypt_core::bip39::*;
-use aloecrypt_core::fixed_byte::*;
 use aloecrypt_core::rng::*;
 use aloecrypt_core::rng_api::*;
 
-use rand_core::{Rng, RngCore};
+use rand_core::Rng;
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
-    getrandom::getrandom(&mut seed);
+    getrandom::getrandom(&mut seed).expect("host entropy source failed");
     AloeRng::new(seed)
 }
 
