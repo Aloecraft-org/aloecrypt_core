@@ -130,6 +130,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: install generator deps
         run: pip install pydantic
+      - name: lint the schema
+        run: python3 generator/lint_schema.py
       - name: generate python bindings
         run: make generate
       - name: every namespace exports something

@@ -13,8 +13,13 @@ merge_docs:
 echo:
 	@echo ${__VERSION}
 
+# Validate the schema before generating from it: names are matched with no
+# validation, so an unresolved one is silently skipped rather than failing.
+lint: merge_docs
+	@python3 ./generator/lint_schema.py
+
 # The generators read the merged schema that build.rs emits.
-generate: merge_docs
+generate: lint
 	@python3 ./generator/gen_py.py
 
 build:

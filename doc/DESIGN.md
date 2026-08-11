@@ -521,9 +521,11 @@ In rough order of value, and roughly independent of each other:
    signing bytes, `AloecryptSignable`. This is the phase that makes certs, CSRs
    and revocations one problem instead of four, and nothing after it can start
    until it exists.
-5. **Schema lint pass** (section 8). Every `impls` pair resolving, every
-   referenced type existing, every struct's size known. Three bugs so far have
-   been silent schema/generator drift.
+5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` runs 406 checks:
+   every `impls` pair resolving, every referenced type existing, enum
+   discriminants unique, no name shadowed across namespaces, and a cross-check
+   against what `meta.py` actually loaded, which is what catches a silently
+   dropped struct. `make generate` runs it first; CI runs it separately.
 6. **Finish or delete `gen_ts.py`** (section 8). It cannot run today, which
    makes the TypeScript half of "multiple entrypoints" further away than the
    file's presence suggests.

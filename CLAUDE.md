@@ -15,6 +15,7 @@ cargo build --lib                      # build.rs merges the schema itself; no p
 cargo test                             # 85 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard
+make lint                              # schema validation (run before generating)
 make generate                          # Python bindings (needs pydantic)
 ```
 
@@ -52,11 +53,14 @@ every target. The wordlists are opt-in and the recovery arithmetic works without
 them. `host_rng` gates `getrandom`, which has no bare-metal backend — the
 library itself never needs entropy, since `AloeRng` is seeded by the caller.
 
-**The schema is the source of truth**, and it is matched by name with no
-validation. A transposed `impls` pair silently drops every export for a
-namespace and the Rust build stays green. CI asserts each namespace emits at
-least one export, and that every generated struct packs to its declared `SIZE`.
-Both checks exist because that class of bug has bitten three times.
+**The schema is the source of truth**, and names in it resolve by lookup with
+no validation in the pipeline itself — an unresolved name is silently skipped
+and the Rust build stays green. `generator/lint_schema.py` is the guard: it
+checks the raw schema and then cross-checks against what `meta.py` actually
+loaded, which is what catches silent drops. `make generate` runs it first, and
+CI runs it separately. CI also asserts each namespace emits at least one export
+and that every generated struct packs to its declared `SIZE`. All of these exist
+because that class of bug has reached main three times.
 
 **Generated structs are `#[repr(C, packed)]`.** Two consequences that will
 surprise you: a field cannot be referenced (`assert_eq!(x.field, 1)` is a
