@@ -20,12 +20,21 @@
 // half the width. This is a REGRESSION guard, not a device budget -- it answers
 // "did this change make the stack worse", not "will this fit in 520 KB".
 //
-// Measured on x86-64, release profile (opt-level="z", lto, panic="abort"):
+// Measured on x86-64, release profile (opt-level="z", lto, panic="abort"),
+// against ml-dsa 0.1.1 / ml-kem 0.3.2:
 //
-//     ml-kem-768  keygen + encapsulate + decapsulate      ~48 KB
-//     ml-dsa-44   keygen + sign + verify                 ~182 KB
-//     ml-dsa-65   keygen + sign + verify                 ~283 KB
-//     ml-dsa-87   keygen + sign + verify                 ~436 KB
+//     ml-kem-768  keygen + encapsulate + decapsulate      ~45 KB
+//     ml-dsa-44   keygen + sign + verify                 ~175 KB
+//     ml-dsa-65   keygen + sign + verify                 ~274 KB
+//     ml-dsa-87   keygen + sign + verify                 ~425 KB
+//
+// The upgrade from ml-dsa 0.1.0-rc.8 moved these by 3% at most (283 -> 274 KB
+// for ml-dsa-65). Upstream now holds the expanded signing key behind MaybeBox,
+// which heap-allocates only when the `alloc` feature is on; without an
+// allocator it falls back to stack allocation, so there was nothing to gain.
+// Relocating these bytes would not help regardless -- 520 KB of SRAM is 520 KB
+// wherever the bytes live, and an allocator would add nondeterminism. Reducing
+// peak *live* bytes is the only thing that moves this number.
 //
 // Re-measure with: cargo run --release --bin stackcheck -- <op> <bytes>
 // which runs a single operation at an exact stack size and exits non-zero if it
@@ -42,10 +51,10 @@ const KB: usize = 1024;
 
 /// (operation, ceiling in bytes, measured floor in bytes)
 const BUDGET: &[(&str, usize, usize)] = &[
-    ("kem768", 64 * KB, 48 * KB),
-    ("dsa44", 224 * KB, 182 * KB),
-    ("dsa65", 352 * KB, 283 * KB),
-    ("dsa87", 528 * KB, 436 * KB),
+    ("kem768", 64 * KB, 45 * KB),
+    ("dsa44", 224 * KB, 175 * KB),
+    ("dsa65", 352 * KB, 274 * KB),
+    ("dsa87", 528 * KB, 425 * KB),
 ];
 
 fn run_op(op: &str) {

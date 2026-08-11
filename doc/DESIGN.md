@@ -224,33 +224,51 @@ namespace. That cost all twenty `aloecrypt_api` exports until it was found. A
 schema that is also a specification wants a lint pass: every `impls` pair
 resolving, every referenced type existing, every struct's size known.
 
-## 9. Upstream
+## 9. Upstream, and where the stack actually goes
 
-`ml-dsa` and `ml-kem` are pinned to release candidates (`0.1.0-rc.8`,
-`0.3.0-rc.0`) while `0.1.1` and `0.3.2` are released. The bump is a contained
-migration rather than a version change: `KeyGen` is gone and `from_seed` is now
-an inherent method on `SigningKey<P>`.
+`ml-dsa` and `ml-kem` are now on their first stable releases (0.1.1 and 0.3.2)
+rather than release candidates. The migration is contained: `KeyGen` is gone,
+`SigningKey<P>` replaces the old associated `KeyPair` type, and `from_seed` is
+an inherent method on it. Six private helpers in `src/dsa.rs` changed.
 
-Worth doing for a specific reason. `ml-dsa 0.1.1` holds the expanded signing key
-behind `MaybeBox`, described upstream as "opportunistic heap allocation when the
-`alloc` feature is available that falls back to stack allocation when it's
-unavailable". Stack pressure on the lattice paths is a known problem and
-upstream has addressed it — but the benefit is gated on `alloc`, which this
-crate does not have, so in the current configuration the bump buys nothing.
+**It is wire compatible.** Public keys, signatures, KEM public keys, ciphertexts
+and shared secrets are byte-identical across the two versions for the same
+seeds, verified directly. Existing keys and signatures are unaffected.
 
-That makes it a measurable experiment rather than a guess: migrate, then try a
-small arena or bump allocator on the embedded profile and measure with
-`cargo run --release --bin stackcheck`. Current baseline, x86-64 release:
+**It did not solve the memory problem, and was never going to.** Upstream now
+holds the expanded signing key behind `MaybeBox`, described as "opportunistic
+heap allocation when the `alloc` feature is available that falls back to stack
+allocation when it's unavailable". Without an allocator it falls back, so there
+was nothing to collect. And relocating would not have helped anyway: 520 KB of
+SRAM is 520 KB wherever the bytes live, and an allocator adds nondeterminism
+that a device like this does not want. Only reducing peak *live* bytes moves
+this number.
 
-| operation | stack |
-|---|---|
-| ml-kem-768 keygen + encapsulate + decapsulate | ~48 KB |
-| ml-dsa-44 keygen + sign + verify | ~182 KB |
-| ml-dsa-65 keygen + sign + verify | ~283 KB |
-| ml-dsa-87 keygen + sign + verify | ~436 KB |
+Measured on x86-64, release profile, by binary search:
 
-Do the migration after the test suite exists. It is the change most likely to
-break something quietly.
+| operation | 0.1.0-rc.8 | 0.1.1 | change |
+|---|---:|---:|---:|
+| ml-kem-768 keygen + encapsulate + decapsulate | 47.9 KB | 45.4 KB | −2.5 KB |
+| ml-dsa-44 keygen + sign + verify | 181.9 KB | 175.1 KB | −6.8 KB |
+| ml-dsa-65 keygen + sign + verify | 282.8 KB | 273.8 KB | −9.0 KB |
+| ml-dsa-87 keygen + sign + verify | 435.2 KB | 424.5 KB | −10.7 KB |
+
+Read those with care. About 2.5 KB of each is a constant offset in the shared
+path, not the lattice code — three of the four first-pass deltas were exactly
+2559 bytes, across operations that share no algorithm. The genuine saving in
+the ML-DSA paths is roughly 4–8 KB, or 3%.
+
+One counter-intuitive result worth keeping: deriving the expanded key directly
+via `ExpandedSigningKey::from_seed` costs *more* stack than building the
+`SigningKey` and cloning its expanded key — 279.8 KB against 273.8 KB for
+ML-DSA-65. `ExpandedSigningKey::from_seed` does exactly that internally and is
+`#[inline]`, so inlining extends the live range rather than shortening it.
+`src/dsa.rs` uses the cheaper form; a comment there says why, because it reads
+like the more wasteful option.
+
+So the pins are worth updating for being out of RC and for costing nothing, not
+for memory. ML-DSA-65 still wants ~274 KB of stack against 520 KB of SRAM, and
+that is the number any embedded design has to plan around.
 
 ## 10. Bugs found and fixed by the first test suite
 

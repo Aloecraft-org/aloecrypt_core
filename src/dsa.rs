@@ -3,23 +3,26 @@
 use super::dsa_api::*;
 
 use ml_dsa::{
-    EncodedSignature, ExpandedSigningKey, KeyGen, MlDsa44 as MlDsa44Params,
-    MlDsa65 as MlDsa65Params, MlDsa87 as MlDsa87Params, Signature, VerifyingKey,
+    EncodedSignature, ExpandedSigningKey, MlDsa44 as MlDsa44Params, MlDsa65 as MlDsa65Params,
+    MlDsa87 as MlDsa87Params, Signature, SigningKey, VerifyingKey,
     signature::{Keypair, Signer, Verifier},
 };
 
 impl MlDsa44Keypair {
     #[inline(never)]
-    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa44Params as KeyGen>::KeyPair {
-        MlDsa44Params::from_seed(seed.into())
+    fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa44Params> {
+        SigningKey::<MlDsa44Params>::from_seed(seed.into())
     }
     #[inline(never)]
     fn _signing_key(&self) -> ExpandedSigningKey<MlDsa44Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    fn _encode_pubkey(kp: &<MlDsa44Params as KeyGen>::KeyPair) -> [u8; MLDSA_44_PUBKEY_SZ] {
+    fn _encode_pubkey(kp: &SigningKey<MlDsa44Params>) -> [u8; MLDSA_44_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -39,16 +42,19 @@ impl MlDsa44Keypair {
 
 impl MlDsa65Keypair {
     #[inline(never)]
-    pub fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa65Params as KeyGen>::KeyPair {
-        MlDsa65Params::from_seed(seed.into())
+    pub fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa65Params> {
+        SigningKey::<MlDsa65Params>::from_seed(seed.into())
     }
     #[inline(never)]
     pub fn _signing_key(&self) -> ExpandedSigningKey<MlDsa65Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    pub fn _encode_pubkey(kp: &<MlDsa65Params as KeyGen>::KeyPair) -> [u8; MLDSA_65_PUBKEY_SZ] {
+    pub fn _encode_pubkey(kp: &SigningKey<MlDsa65Params>) -> [u8; MLDSA_65_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -67,16 +73,19 @@ impl MlDsa65Keypair {
 
 impl MlDsa87Keypair {
     #[inline(never)]
-    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa87Params as KeyGen>::KeyPair {
-        MlDsa87Params::from_seed(seed.into())
+    fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa87Params> {
+        SigningKey::<MlDsa87Params>::from_seed(seed.into())
     }
     #[inline(never)]
     fn _signing_key(&self) -> ExpandedSigningKey<MlDsa87Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    fn _encode_pubkey(kp: &<MlDsa87Params as KeyGen>::KeyPair) -> [u8; MLDSA_87_PUBKEY_SZ] {
+    fn _encode_pubkey(kp: &SigningKey<MlDsa87Params>) -> [u8; MLDSA_87_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -205,7 +214,7 @@ impl IMlDsa87Keypair for MlDsa87Keypair {
     #[inline(never)]
     fn get_verifier(&self) -> MlDsa87Verifier {
         let public_key = {
-            let signing_key = MlDsa87Params::from_seed(&(self.private_seed).into());
+            let signing_key = Self::_kp(&(self.private_seed).into());
             Self::_encode_pubkey(&signing_key)
         };
         MlDsa87Verifier { public_key }
