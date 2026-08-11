@@ -184,19 +184,46 @@ derivation and a 520 KB device are mutually exclusive; a consumer that needs Arg
 is a hosted consumer, and a consumer with hardware-backed key storage and retry
 counting needs no password stretching at all.
 
-## 7. Open
+## 7. Decided, not yet built
 
-| Question | Blocks | Current thinking |
-|---|---|---|
-| Extism bindings or native bindings? | Entrypoints | Probably both — extism for reach, native for the ones people build on. Needs research. |
-| RFC 7468 transport-compatibility, or full PKCS interop? | Document layer | Possibly both. Full interop drags ASN.1 into the crate; needs research. |
-| Revocation mechanism | Identity layer | Start with short expiry plus reissue — `dlt_refresh_count` / `dlt_max_refresh` only mean anything under a reissue model. Revocation certificates and a Merkle log layer on afterwards without another format break. |
+**The crate ships a password KDF.** The alternative was to export none and let
+each consumer bring its own; the decision is that a cryptography library people
+reach for should not make them source a KDF separately. What exists today is
+`pbkdf`: ten iterations of a plain SHAKE-256 chain, which is not a KDF in any
+meaningful sense and must be replaced rather than tuned.
 
-Revocation is no longer a blocking decision. It was, while the wire format was
-fixed-length and had nowhere to put a proof. With tagged extensible sections a proof
-slot can be added later without breaking documents already written, and with
-verification returning an `Assurance`, "revocation unavailable" is already a
-representable outcome rather than a hole in the type.
+The open part is the shape, not the question. Argon2id is the right default on a
+hosted target and impossible on a 520 KB device, so it is a profile-gated
+implementation behind one interface. `argon2` supports `no_std` with a
+caller-supplied memory block, so an embedded profile can offer real (if small)
+memory hardness rather than none — worth measuring before assuming it cannot fit.
+
+**Errors cross the wire as codes, carried by a schema enum.** The wire format
+returns raw bytes with no discriminant, so today a failure in an exported
+function panics — and under `panic = "abort"` that kills the module, leaving the
+host with no information at all. Two bytes of status is strictly cheaper.
+
+The shape:
+
+- The error taxonomy is a **schema enum** with `repr_type: u16`, so it generates
+  into Rust, Python and TypeScript with stable documented numbering — the same
+  flat FFI representation already used for `TotpAlgorithm`.
+- Every export gains a **uniform 2-byte status prefix**, emitted by the
+  generator, which already computes each return size. Marking only some
+  functions fallible saves two bytes and costs a non-uniform format to reason
+  about.
+- Codes stay **coarse on purpose**. For authenticated decryption, "wrong key"
+  and "altered ciphertext" must share a code. Say so in the schema description
+  or someone will helpfully split them.
+
+Once this lands, `authorize_recovery` converts from `assert_eq!` on a MAC to a
+returned error, and `src/error.rs` can fold into the generated type.
+
+**Still genuinely open:** whether the Var types move to their own `no_std`
+crate (kept in-tree for now, and fixed in place, so the extraction is easier
+than it was); extism versus native bindings, where the answer is probably both;
+and whether the document format aims at RFC 7468 transport compatibility or
+full PKCS interop, where the answer is possibly both.
 
 ## 8. Known gaps
 
@@ -453,3 +480,50 @@ the right call for attacker-reachable bytes but should be a deliberate one.
 The extraction into a separate `no_std` crate is still worth doing. It is easier
 now than it was: the types are sound, the encoding is explicit, and the only
 schema coupling left is the four struct definitions and their traits.
+
+## 15. Key material cannot currently be zeroized
+
+Every generated key-bearing struct derives `Copy` —
+`MlDsa44/65/87Keypair`, `MlKem512/768/1024Keypair`, `AloeRng`, all of them.
+`Copy` and `Drop` are mutually exclusive in Rust, so `ZeroizeOnDrop` cannot be
+implemented on any of them. Adding `zeroize` as a dependency today would
+therefore protect nothing.
+
+(`zeroize` and `subtle` are already in the tree transitively, via
+`chacha20poly1305` and `cipher`. RustCrypto uses them for its own internal key
+material — the ChaCha20Poly1305 key is wiped on drop. Neither is a direct
+dependency, and neither is referenced anywhere in `src/`.)
+
+The consequence is larger than a missing wipe: a `Copy` seed is silently
+duplicated on every assignment and every pass-by-value, so there is no way to
+know how many copies of a private seed exist or to clear them. For a 32-byte
+ML-DSA seed that is the entire private key.
+
+This lands squarely on the root-versus-delegate type split in section 5. A root
+identity that may live offline and a working delegate that should be wiped after
+use cannot both be `Copy`. Removing `Copy` from the key structs is the
+prerequisite for any key hygiene at all, and it is a schema change (the
+`derives` field) with wide ripple — every current pass-by-value becomes a move
+or a borrow. Worth doing deliberately, as part of the identity layer, rather
+than piecemeal.
+
+## Next
+
+In rough order of value, and roughly independent of each other:
+
+1. **Password KDF** (section 7). Decided in principle, not built. Closes the
+   last `#[ignore]`d test.
+2. **Wire error codes** (section 7). Agreed shape, not built. Unblocks every
+   future fallible export, and `authorize_recovery` specifically.
+3. **Remove `Copy` from key structs** (section 15). Prerequisite for zeroizing
+   anything. Do it with the identity layer's type split, not before.
+4. **The document layer** (section 3). Armour, extensible envelope, canonical
+   signing bytes, `AloecryptSignable`. This is the phase that makes certs, CSRs
+   and revocations one problem instead of four, and nothing after it can start
+   until it exists.
+5. **Schema lint pass** (section 8). Every `impls` pair resolving, every
+   referenced type existing, every struct's size known. Three bugs so far have
+   been silent schema/generator drift.
+6. **Finish or delete `gen_ts.py`** (section 8). It cannot run today, which
+   makes the TypeScript half of "multiple entrypoints" further away than the
+   file's presence suggests.

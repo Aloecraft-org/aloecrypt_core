@@ -12,6 +12,13 @@
 Implements ML-KEM (FIPS 203), ML-DSA (FIPS 204), ChaCha20-Poly1305 password encryption, SHAKE-256 key derivation, and Keccak-256 hashing.
 </div>
 
+## Status
+
+Mid-migration: `aloecrypt_core` is becoming `aloecrypt`, absorbing the identity
+and session concepts from the original `aloecrypt` repository. See
+[`doc/DESIGN.md`](doc/DESIGN.md) for settled decisions, known gaps and what is
+next, and [`CLAUDE.md`](CLAUDE.md) for build invariants.
+
 ## Structure
 
 ```
@@ -48,11 +55,20 @@ Output is written to `.generated/gen_py/aloecrypt.py`.
 
 ## Build
 
-Individual targets:
+`build.rs` merges the schema and generates the Rust API, so a clean checkout
+builds with no preparatory step:
 
 ```sh
-cargo build --target wasm32-wasip2 --profile release
+cargo build --lib
+cargo test
+cargo build --lib --target wasm32-wasip2 --no-default-features
+cargo build --lib --target thumbv8m.main-none-eabihf --no-default-features
 ```
+
+Features: `slip39_words` and `bip39_words` add the mnemonic wordlists (the
+recovery arithmetic works without them), and `host_rng` pulls in `getrandom` for
+the example binaries. All are opt-out; `--no-default-features` builds for every
+supported target.
 
 ## Wire format
 
