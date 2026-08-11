@@ -12,7 +12,7 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 85 tests
+cargo test                             # 86 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard
 make lint                              # schema validation (run before generating)
@@ -68,10 +68,23 @@ compile error, E0793 — copy to a local first), and no buffer inside one can be
 assumed aligned. That is why `VarU16_255` decodes into a caller buffer rather
 than handing out a `&[u16]`.
 
-**The wire format has no error channel.** Exports return raw bytes with no
-discriminant, so a wire-exported function cannot return a `Result` yet. `src/error.rs`
-is a plain Rust type used only on functions the schema does *not* export. Do not
-add a `Result` to an exported function until the error-code work lands.
+**Key-bearing structs are not `Copy`** — keypairs, cipher state, RNG state,
+and every struct containing one. Public-key-only types (verifiers,
+encapsulators) and the Var types keep `Copy`. When a schema struct's derives
+lack `Copy`, `build.rs` strips `Clone` from the derive list and emits a manual
+field-wise impl, because `derive(Clone)` on a packed struct moves fields and
+breaks on a non-Copy nested field. Removing `Copy` is the prerequisite for
+zeroize, which is still future work (DESIGN section 15).
+
+**Errors cross the wire as a 2-byte status prefix.** Every export returns a
+little-endian `StatusCode` (a schema enum, `aloecrypt_api`) ahead of its
+payload; the payload is absent — not zeroed — on any non-`Ok` status, and
+infallible exports always send `Ok`. A fallible function is marked
+`"fallible": "true"` in the schema: the Rust signature becomes
+`Result<T, StatusCode>` and the Python wrapper raises `AloecryptStatusError`.
+Codes are coarse on purpose — wrong key and altered ciphertext share
+`AuthFailed` deliberately, so do not split codes. `src/error.rs` re-exports the
+generated type and defines `AloecryptResult<T>` (DESIGN section 16).
 
 **Stack is the binding constraint, not heap.** The downstream target has 520 KB
 of SRAM total and ML-DSA-65 wants ~274 KB of stack. Moving allocations to a heap
@@ -91,7 +104,7 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
-| `tests/` | 85 tests; external vectors where they exist |
+| `tests/` | 86 tests; external vectors where they exist |
 
 ## Testing conventions
 
@@ -108,6 +121,7 @@ remains: `pbkdf_default_cost_is_defensible`.
 ## Where to pick up
 
 See "Next" in `doc/DESIGN.md`. In short: the password KDF is decided in
-principle (the crate ships one) but not implemented; the wire error-code
-convention is agreed but not built; and the document layer — armour, envelope,
-canonical signing bytes — is the next substantive phase.
+principle (the crate ships one) but not implemented, and the document layer —
+armour, envelope, canonical signing bytes — is the next substantive phase. The
+wire error-code convention and the `Copy` removal from key structs are done;
+the zeroize wipe they unblock belongs to the identity layer.

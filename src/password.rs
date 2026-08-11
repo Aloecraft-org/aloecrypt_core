@@ -1,7 +1,6 @@
 // src/password.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 use super::aloecrypt_api::*;
-use super::error::AloecryptError;
 use super::password_api::*;
 use super::*;
 use core::cmp;
@@ -95,7 +94,7 @@ pub fn password_encrypt_next_chunk(
 pub fn password_decrypt_next_chunk(
     chunk: PasswordEncryptedChunk,
     mut cipher: PasswordCipher,
-) -> Result<DecryptChunkResult, AloecryptError> {
+) -> Result<DecryptChunkResult, StatusCode> {
     let mut current_nonce = EMPTY_PASSWORD_NONCE;
     current_nonce[7..11].copy_from_slice(&cipher.counter.to_le_bytes());
     for (c, n) in current_nonce.iter_mut().zip(cipher.nonce.iter()) {
@@ -131,7 +130,7 @@ pub fn password_decrypt_next_chunk(
     // error rather than panicking matters especially under panic = "abort",
     // where this would otherwise take the whole module down.
     aead.decrypt_in_place_detached(nonce, b"", &mut next_chunk, tag_part.into())
-        .map_err(|_| AloecryptError::DecryptAuthFailed)?;
+        .map_err(|_| StatusCode(StatusCode::AuthFailed))?;
 
     cipher.counter = match is_done != 0 {
         true => 0,
@@ -173,7 +172,7 @@ pub fn password_encrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Encryp
 pub fn password_decrypt_next(
     data: &[u8],
     cipher: &mut PasswordCipher,
-) -> Result<DecryptChunkResult, AloecryptError> {
+) -> Result<DecryptChunkResult, StatusCode> {
     let encrypted_chunk_sz = PASSWORD_CIPHER_CHUNK_SZ + ENCRYPTED_TAG_SZ;
     let offset = (cipher.counter as usize) * encrypted_chunk_sz;
     let mut encrypted_chunk = EMPTY_PASSWORD_ENCRYPTED_CHUNK;

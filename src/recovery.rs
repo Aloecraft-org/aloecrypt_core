@@ -1,3 +1,4 @@
+use super::aloecrypt_api::StatusCode;
 use super::hash::*;
 use super::hash_api::*;
 use super::kem_api::*;
@@ -33,17 +34,30 @@ impl IRecoverableSecret for RecoverableSecret {
     }
 }
 
+/// Compare two MACs in constant time: fold the XOR of every byte pair into one
+/// accumulator and branch exactly once, on the final result. `black_box` keeps
+/// the compiler from noticing a nonzero accumulator early and short-circuiting
+/// the loop back into the timing side channel this exists to close.
+fn mac_eq(a: &Hmac256, b: &Hmac256) -> bool {
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    core::hint::black_box(diff) == 0
+}
+
+/// Fails with `AuthFailed` when the reconstructed HMAC does not match the
+/// presented one. Which input was wrong is deliberately not distinguishable.
 pub fn authorize_recovery(
     authorizer: MlKem512Keypair,
     cipher: &RecoveryCipher,
     mac: Hmac256,
     ikm: &[u8],
     domain_info: &str,
-) -> MlKemSecret {
+) -> Result<MlKemSecret, StatusCode> {
     let authentication = domain_hmac(ikm, domain_info);
-    assert_eq!(
-        mac, authentication,
-        "Reconstructed HMAC must match for ikm and domain info"
-    );
-    authorizer.decapsulate(&cipher)
+    if !mac_eq(&mac, &authentication) {
+        return Err(StatusCode(StatusCode::AuthFailed));
+    }
+    Ok(authorizer.decapsulate(&cipher))
 }

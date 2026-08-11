@@ -1,5 +1,39 @@
 {
   "aloecrypt_api": {
+    "enums": [
+      {
+        "name": "StatusCode",
+        "derives": "Debug, Clone, Copy, PartialEq, Eq, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "repr_type": "u16",
+        "members": [
+          {
+            "name": "Ok",
+            "discriminant": "0"
+          },
+          {
+            "name": "AuthFailed",
+            "discriminant": "1"
+          },
+          {
+            "name": "BadEncoding",
+            "discriminant": "2"
+          },
+          {
+            "name": "BadArgument",
+            "discriminant": "3"
+          },
+          {
+            "name": "Unsupported",
+            "discriminant": "4"
+          },
+          {
+            "name": "Unspecified",
+            "discriminant": "65535",
+            "default": "true"
+          }
+        ]
+      }
+    ],
     "sz_consts": [
       {
         "name": "ENCRYPTED_TAG_SZ",
@@ -711,7 +745,7 @@
     "structs": [
       {
         "name": "MlDsa44Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "description": "MlDsa44 Keypair",
         "fields": [
           {
@@ -730,7 +764,7 @@
       },
       {
         "name": "MlDsa65Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "description": "MlDsa65 Keypair",
         "fields": [
           {
@@ -749,7 +783,7 @@
       },
       {
         "name": "MlDsa87Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "description": "MlDsa87 Keypair",
         "fields": [
           {
@@ -1379,7 +1413,7 @@
     "structs": [
       {
         "name": "MlKem512Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "private_seed",
@@ -1393,7 +1427,7 @@
       },
       {
         "name": "MlKem768Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "private_seed",
@@ -1407,7 +1441,7 @@
       },
       {
         "name": "MlKem1024Keypair",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "private_seed",
@@ -1421,7 +1455,7 @@
       },
       {
         "name": "MlKem512EncapsulatorResult",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "secret",
@@ -1435,7 +1469,7 @@
       },
       {
         "name": "MlKem768EncapsulatorResult",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "secret",
@@ -1449,7 +1483,7 @@
       },
       {
         "name": "MlKem1024EncapsulatorResult",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "secret",
@@ -1709,7 +1743,7 @@
     "structs": [
       {
         "name": "PasswordCipher",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "key",
@@ -1735,7 +1769,7 @@
       },
       {
         "name": "EncryptChunkResult",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "cipher",
@@ -1753,7 +1787,7 @@
       },
       {
         "name": "DecryptChunkResult",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "cipher",
@@ -1818,6 +1852,37 @@
       {
         "trait": "IPasswordCipher",
         "struct": "PasswordCipher"
+      }
+    ],
+    "functions": [
+      {
+        "name": "password_encrypt_next_chunk",
+        "return": "EncryptChunkResult",
+        "params": [
+          {
+            "name": "chunk",
+            "type": "PasswordUnencryptedChunk"
+          },
+          {
+            "name": "cipher",
+            "type": "PasswordCipher"
+          }
+        ]
+      },
+      {
+        "name": "password_decrypt_next_chunk",
+        "return": "DecryptChunkResult",
+        "fallible": "true",
+        "params": [
+          {
+            "name": "chunk",
+            "type": "PasswordEncryptedChunk"
+          },
+          {
+            "name": "cipher",
+            "type": "PasswordCipher"
+          }
+        ]
       }
     ]
   },
@@ -1922,7 +1987,7 @@
     "structs": [
       {
         "name": "AloeRng",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "seed",
@@ -1940,7 +2005,7 @@
       },
       {
         "name": "AloeRngU8Result",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "_self",
@@ -1954,7 +2019,7 @@
       },
       {
         "name": "AloeRngU32Result",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "_self",
@@ -1968,7 +2033,7 @@
       },
       {
         "name": "AloeRngU64Result",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "_self",
@@ -1982,7 +2047,7 @@
       },
       {
         "name": "AloeRngU128Result",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "_self",
@@ -2083,7 +2148,7 @@
     "structs": [
       {
         "name": "RecoveryKey",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "cipher",
@@ -2104,7 +2169,7 @@
       },
       {
         "name": "RecoverableSecret",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "secret",
@@ -2170,6 +2235,7 @@
       {
         "name": "authorize_recovery",
         "return": "MlKemSecret",
+        "fallible": "true",
         "params": [
           {
             "name": "authorizer",
@@ -2264,7 +2330,7 @@
       {
         "name": "TotpCredential",
         "description": "",
-        "derives": "Clone, Copy, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "derives": "Clone, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
         "fields": [
           {
             "name": "secret",

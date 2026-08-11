@@ -126,6 +126,37 @@ def lint(schema_path: str) -> int:
                 f"{ns_name}.{e['name']}: repr_type "
                 f"{e.get('repr_type')!r} is not a primitive",
             )
+            # The u16 -> enum conversion needs a fallback arm, which comes
+            # from the default member; without exactly one, the generated
+            # match is non-exhaustive (rustc error) or ambiguous.
+            defaults = [
+                m["name"] for m in e.get("members", [])
+                if str(m.get("default", "")).strip() == "true"
+            ]
+            f.check(
+                len(defaults) == 1,
+                f"{ns_name}.{e['name']}: needs exactly one default member, "
+                f"found {defaults or 'none'}",
+            )
+            # build.rs unwraps every member's description into a doc comment,
+            # so a missing one panics the Rust build with no context.
+            for m in e.get("members", []):
+                f.check(
+                    isinstance(m.get("description"), str),
+                    f"{ns_name}.{e['name']}.{m['name']}: member has no "
+                    f"description (build.rs requires one after the doc merge)",
+                )
+
+        # `fallible` gates the wire error channel; anything but the strings
+        # "true"/"false" would be silently read as false.
+        for holder in ns.get("traits", []) + [ns]:
+            for fn in holder.get("functions", []):
+                if "fallible" in fn:
+                    f.check(
+                        fn["fallible"] in ("true", "false"),
+                        f"{ns_name}.{fn['name']}: fallible must be the string "
+                        f"'true' or 'false', not {fn['fallible']!r}",
+                    )
 
         # A duplicated type name across namespaces silently shadows.
         for key in ("byte_aliases", "structs", "enums"):
@@ -136,6 +167,39 @@ def lint(schema_path: str) -> int:
                     f"{ns_name}.{entry['name']}: name already defined in {prior}",
                 )
                 seen_names.setdefault(entry["name"], ns_name)
+
+    # ── The wire status contract ─────────────────────────────────────────
+    # Every export's return is prefixed with a 2-byte StatusCode. The enum
+    # must exist, Ok must be 0 (the value infallible exports always send),
+    # and Ok must NOT be the default member: the default is what an
+    # unrecognized code decodes to, and an unknown code must never read as
+    # success.
+    status = next(
+        (
+            e
+            for e in schema.get("aloecrypt_api", {}).get("enums", [])
+            if e["name"] == "StatusCode"
+        ),
+        None,
+    )
+    f.check(status is not None, "aloecrypt_api.StatusCode: enum is missing")
+    if status is not None:
+        members = {m["name"]: m for m in status.get("members", [])}
+        ok = members.get("Ok")
+        f.check(
+            ok is not None and str(ok["discriminant"]).strip() == "0",
+            "aloecrypt_api.StatusCode: needs an Ok member with discriminant 0",
+        )
+        f.check(
+            ok is not None and str(ok.get("default", "")).strip() != "true",
+            "aloecrypt_api.StatusCode: Ok must not be the default member -- "
+            "an unrecognized code would decode as success",
+        )
+        f.check(
+            status.get("repr_type") == "u16",
+            "aloecrypt_api.StatusCode: repr_type must be u16 (the wire "
+            "prefix is 2 bytes)",
+        )
 
     # ── Cross-check against what meta.py actually loaded ─────────────────
     # This is the check that catches silent drops: the raw schema can be

@@ -194,3 +194,43 @@ jobs:
               print("  ERROR:", f)
           raise SystemExit(1 if failures else 0)
           EOF
+      - name: wire status prefix round trips
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          # Every export returns a 2-byte LE StatusCode ahead of its payload.
+          # Exercise the decode path with a stub plugin: Ok strips the prefix,
+          # a non-Ok status raises, and a short reply never reads as success.
+          src = open('.generated/gen_py/aloecrypt_core.py').read()
+          ns = {}
+          exec(compile(src, 'aloecrypt_core.py', 'exec'), ns)
+
+          assert ns['_check_status'](b'\x00\x00abc') == b'abc'
+          for reply, want in [(b'\x01\x00', 1), (b'\x00', 65535), (b'', 65535)]:
+              try:
+                  ns['_check_status'](reply)
+                  raise SystemExit(f"no raise for {reply!r}")
+              except Exception as e:
+                  if type(e).__name__ != 'AloecryptStatusError' or e.code != want:
+                      raise SystemExit(f"wrong error for {reply!r}: {e!r}")
+
+          class StubPlugin:
+              def __init__(self, reply): self.reply = reply
+              def call(self, name, payload): return self.reply
+
+          DCR = ns['DecryptChunkResult']
+          chunk = bytes(ns['PasswordEncryptedChunk'].SZ)
+          cipher = ns['PasswordCipher']()
+          out = ns['password_api___password_decrypt_next_chunk'](
+              chunk, cipher, StubPlugin(b'\x00\x00' + DCR().pack()))
+          assert isinstance(out, DCR), "Ok reply must unpack to the struct"
+          try:
+              ns['password_api___password_decrypt_next_chunk'](
+                  chunk, cipher, StubPlugin(b'\x01\x00'))
+              raise SystemExit("fallible export must raise on AuthFailed")
+          except Exception as e:
+              assert type(e).__name__ == 'AloecryptStatusError' and e.code == 1
+
+          print("wire status prefix: decode, raise, and short-reply paths all pass")
+          EOF

@@ -1,5 +1,19 @@
 {
     "aloecrypt_api": {
+        "enums": [
+            {
+                "name": "StatusCode",
+                "description": "Status codes for the wire error channel. Every plugin export returns a 2-byte little-endian StatusCode ahead of its payload; the payload is present only when the status is Ok. Codes are coarse on purpose: a finer taxonomy would leak information an attacker can use, so resist splitting these.",
+                "members": [
+                    {"name": "Ok",          "description": "The operation succeeded and the payload follows."},
+                    {"name": "AuthFailed",  "description": "Authentication failed: wrong key, wrong nonce, altered ciphertext, or a MAC that does not match. Deliberately a single code -- distinguishing these cases would hand an attacker an oracle, so they must stay indistinguishable."},
+                    {"name": "BadEncoding", "description": "The input bytes could not be decoded: wrong length, malformed framing, or invalid UTF-8."},
+                    {"name": "BadArgument", "description": "An argument is outside the function's domain, such as a threshold larger than the share count."},
+                    {"name": "Unsupported", "description": "The requested algorithm or variant is not available in this build."},
+                    {"name": "Unspecified", "description": "An error with no more specific code. Also what an unrecognized status decodes to, so an unknown code can never read as success."}
+                ]
+            }
+        ],
         "sz_consts": [
             {"name" : "ENCRYPTED_TAG_SZ",     "description": "Size in bytes of the authentication tag appended to each encrypted chunk by the AEAD cipher (GCM/Poly1305). This overhead must be accounted for when sizing encrypted output buffers."},
             {"name" : "TIMESTAMP_SZ",         "description" : ""},
@@ -672,6 +686,24 @@
             {"name": "PasswordUnencryptedChunk", "description": "A fixed-size buffer holding one plaintext chunk of PASSWORD_CIPHER_CHUNK_SZ bytes."},
             {"name": "PasswordNonce",            "description": "Nonce used to initialize the password cipher. Must be unique for each encryption operation performed under the same key. Typically generated from a CSPRNG and stored alongside the ciphertext."}
         ],
+        "functions": [
+            {
+                "name": "password_encrypt_next_chunk",
+                "description": "Encrypt one fixed-size chunk under ChaCha20-Poly1305, deriving the chunk nonce from the cipher's base nonce and counter. Returns the advanced cipher state, the encrypted chunk with its tag, and whether this was the final chunk.",
+                "params": [
+                    {"name": "chunk",  "description": "The plaintext chunk to encrypt. Always PASSWORD_CIPHER_CHUNK_SZ bytes; the caller zero-pads a short final chunk."},
+                    {"name": "cipher", "description": "The cipher state; its counter selects which chunk this is."}
+                ]
+            },
+            {
+                "name": "password_decrypt_next_chunk",
+                "description": "Decrypt and authenticate one chunk. Fails with AuthFailed on a wrong key, wrong nonce, or altered ciphertext -- which of these happened is deliberately not distinguishable. Returns the advanced cipher state, the plaintext, and how many of its bytes are payload.",
+                "params": [
+                    {"name": "chunk",  "description": "The encrypted chunk and its authentication tag."},
+                    {"name": "cipher", "description": "The cipher state; its counter selects which chunk this is."}
+                ]
+            }
+        ],
         "structs": [
             {
                 "name": "PasswordCipher",
@@ -894,7 +926,7 @@
         "functions": [
             {
                 "name": "authorize_recovery",
-                "description": "",
+                "description": "Reconstruct the HMAC from the presented ikm and domain info, and decapsulate the recovery ciphertext only if it matches. Fails with AuthFailed on a mismatch; the comparison is constant-time.",
                 "params": [
                     {"name": "authorizer",  "description": "Authorizer KEM decapsulator"},
                     {"name": "cipher",      "description": "KEM ciphertext presented to authorizer for decapsulation"},

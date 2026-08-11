@@ -247,7 +247,12 @@ fn generate_enums(out: &mut File, value: &serde_json::Value, namespace: &str) {
     }
 }
 
-fn generate_structs(out: &mut File, value: &serde_json::Value, namespace: &str) {
+fn generate_structs(
+    out: &mut File,
+    value: &serde_json::Value,
+    namespace: &str,
+    struct_names: &std::collections::HashSet<String>,
+) {
     let indent = "    ";
     if let Some(items) = value.as_array() {
         for entry in items {
@@ -261,8 +266,30 @@ fn generate_structs(out: &mut File, value: &serde_json::Value, namespace: &str) 
                 .unwrap();
             }
 
-            if let Some(derives) = entry["derives"].as_str() {
-                writeln!(out, "{}#[derive({})]", indent, derives).unwrap();
+            // derive(Clone) on a #[repr(C, packed)] struct clones by moving
+            // each field out, because the derive refuses references to packed
+            // fields. That move fails the moment a field is itself a non-Copy
+            // struct -- exactly the shape of every result struct once key
+            // material stopped being Copy. So for a non-Copy struct, Clone is
+            // stripped from the derive list and emitted by hand below:
+            // hand-written code may reference a packed field when its type has
+            // alignment 1, which every generated struct does.
+            let derives_str = entry["derives"].as_str();
+            let is_copy = derives_str
+                .map(|d| d.split(',').any(|x| x.trim() == "Copy"))
+                .unwrap_or(false);
+            let wants_clone = derives_str
+                .map(|d| d.split(',').any(|x| x.trim() == "Clone"))
+                .unwrap_or(false);
+            let manual_clone = wants_clone && !is_copy;
+
+            if let Some(derives) = derives_str {
+                let emitted: Vec<&str> = derives
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|x| !(manual_clone && *x == "Clone"))
+                    .collect();
+                writeln!(out, "{}#[derive({})]", indent, emitted.join(", ")).unwrap();
             }
 
             writeln!(out, "{}#[repr(C, packed)]", indent).unwrap();
@@ -299,6 +326,39 @@ fn generate_structs(out: &mut File, value: &serde_json::Value, namespace: &str) 
                 }
             }
             writeln!(out, "    }}");
+
+            if manual_clone {
+                let name = entry["name"].as_str().unwrap();
+                writeln!(out, "{}impl Clone for {} {{", indent, name).unwrap();
+                writeln!(out, "{}    fn clone(&self) -> Self {{", indent).unwrap();
+                writeln!(out, "{}        Self {{", indent).unwrap();
+                if let Some(fields_arr) = entry.get("fields").and_then(|f| f.as_array()) {
+                    for field in fields_arr {
+                        let fname = field["name"].as_str().unwrap();
+                        let ftype = field["type"].as_str().unwrap().trim();
+                        // A nested schema struct may itself be non-Copy, so it
+                        // must be cloned through a reference -- sound because
+                        // packed structs have alignment 1. Everything else
+                        // (primitives, byte arrays, enum newtypes) is Copy and
+                        // is plain-copied, which sidesteps E0793 on the
+                        // align > 1 primitives.
+                        if struct_names.contains(ftype) {
+                            writeln!(
+                                out,
+                                "{}            {}: self.{}.clone(),",
+                                indent, fname, fname
+                            )
+                            .unwrap();
+                        } else {
+                            writeln!(out, "{}            {}: self.{},", indent, fname, fname)
+                                .unwrap();
+                        }
+                    }
+                }
+                writeln!(out, "{}        }}", indent).unwrap();
+                writeln!(out, "{}    }}", indent).unwrap();
+                writeln!(out, "{}}}", indent).unwrap();
+            }
         }
     }
 }
@@ -393,8 +453,25 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
                             instance_str = format!("{}, ", instance.as_str().unwrap());
                         }
 
+                        // A fallible function returns Result over the wire
+                        // status enum. Infallible functions keep their bare
+                        // return: the status prefix is uniform on the wire,
+                        // but only a function that can actually fail should
+                        // force callers through a Result.
+                        let fallible = function
+                            .get("fallible")
+                            .and_then(|f| f.as_str())
+                            .map(|f| f == "true")
+                            .unwrap_or(false);
                         if let Some(return_val) = function.get("return") {
-                            return_str = format!(" -> {}", return_val.as_str().unwrap());
+                            let ret = return_val.as_str().unwrap();
+                            return_str = if fallible {
+                                format!(" -> Result<{}, StatusCode>", ret)
+                            } else {
+                                format!(" -> {}", ret)
+                            };
+                        } else if fallible {
+                            return_str = " -> Result<(), StatusCode>".to_string();
                         }
 
                         writeln!(
@@ -418,6 +495,21 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
 fn generate_api(parsed: &serde_json::Value, outfile: PathBuf) {
     let mut out =
         fs::File::create(&outfile).expect(format!("failed to create {:?}", outfile).as_str());
+
+    // Struct names across every namespace, so the manual Clone emission can
+    // tell a nested (possibly non-Copy) struct field from a Copy one.
+    let mut struct_names = std::collections::HashSet::new();
+    if let Some(api) = parsed.as_object() {
+        for value in api.values() {
+            if let Some(structs) = value.get("structs").and_then(|s| s.as_array()) {
+                for entry in structs {
+                    if let Some(name) = entry["name"].as_str() {
+                        struct_names.insert(name.to_string());
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(api) = parsed.as_object() {
         for namespace in api.keys() {
@@ -451,7 +543,7 @@ fn generate_api(parsed: &serde_json::Value, outfile: PathBuf) {
             }
             writeln!(out).unwrap();
             if let Some(structs) = value.get("structs") {
-                generate_structs(&mut out, structs, namespace);
+                generate_structs(&mut out, structs, namespace, &struct_names);
             } else {
                 writeln!(out, "    // (no structs in {})", namespace).unwrap();
             }

@@ -198,26 +198,8 @@ implementation behind one interface. `argon2` supports `no_std` with a
 caller-supplied memory block, so an embedded profile can offer real (if small)
 memory hardness rather than none — worth measuring before assuming it cannot fit.
 
-**Errors cross the wire as codes, carried by a schema enum.** The wire format
-returns raw bytes with no discriminant, so today a failure in an exported
-function panics — and under `panic = "abort"` that kills the module, leaving the
-host with no information at all. Two bytes of status is strictly cheaper.
-
-The shape:
-
-- The error taxonomy is a **schema enum** with `repr_type: u16`, so it generates
-  into Rust, Python and TypeScript with stable documented numbering — the same
-  flat FFI representation already used for `TotpAlgorithm`.
-- Every export gains a **uniform 2-byte status prefix**, emitted by the
-  generator, which already computes each return size. Marking only some
-  functions fallible saves two bytes and costs a non-uniform format to reason
-  about.
-- Codes stay **coarse on purpose**. For authenticated decryption, "wrong key"
-  and "altered ciphertext" must share a code. Say so in the schema description
-  or someone will helpfully split them.
-
-Once this lands, `authorize_recovery` converts from `assert_eq!` on a MAC to a
-returned error, and `src/error.rs` can fold into the generated type.
+**Errors cross the wire as codes** — this was agreed here and is now built;
+the convention as it exists is section 16.
 
 **Still genuinely open:** whether the Var types move to their own `no_std`
 crate (kept in-tree for now, and fixed in place, so the extraction is easier
@@ -227,24 +209,15 @@ full PKCS interop, where the answer is possibly both.
 
 ## 8. Known gaps
 
-**Fallible functions that cross the wire still panic.** The plugin wire format
-has no error channel: every export returns raw bytes with no discriminant. So a
-wire-exported function cannot return a `Result` until there is an agreed
-representation for an error crossing that boundary, and that decision is open.
-
-`src/error.rs` exists and is used, but only on functions that are *not*
-exported through the schema — the password chunk decryptor is fallible now.
-`authorize_recovery` is the one exported function that still ends in an
-`assert_eq!` on a MAC, and it stays that way deliberately rather than being
-given a representation nobody has agreed to. That comparison is also not
-constant time.
-
-**Schema entries are matched by name with no validation.** A mismatched
-`impls` pair — `{"trait": "VarString511", "struct": "VarString"}` instead of the
-other way round — resolves to nothing and silently drops every export for that
-namespace. That cost all twenty `aloecrypt_api` exports until it was found. A
-schema that is also a specification wants a lint pass: every `impls` pair
-resolving, every referenced type existing, every struct's size known.
+**Schema entries are matched by name with no validation in the pipeline
+itself.** A mismatched `impls` pair — `{"trait": "VarString511", "struct":
+"VarString"}` instead of the other way round — resolves to nothing and silently
+drops every export for that namespace. That cost all twenty `aloecrypt_api`
+exports until it was found. `generator/lint_schema.py` now guards this class of
+bug (`make generate` runs it first, CI runs it separately), but the underlying
+pipeline still resolves by lookup with no errors of its own — the lint is a
+checkpoint, not a cure, and new generator features need new lint rules to stay
+guarded.
 
 **The TypeScript generator cannot run.** `TypeScriptGenerator` leaves
 `emit_namespace_wrappers` unimplemented and its `main()` reads a path that does
@@ -341,13 +314,13 @@ fails deliberately when that bug is fixed, so the gap cannot be quietly lost:
 
 | Ignored test | Waiting on |
 |---|---|
-| `varstring_roundtrips_up_to_capacity` | `VarString511`'s one-byte length prefix (changes the packed layout, deferred to the Var* extraction) |
-| `hash_inputs_are_unambiguously_framed` | length-prefixed hash inputs |
 | `pbkdf_default_cost_is_defensible` | a real password KDF |
 
-`wrong_key_panics_instead_of_returning_an_error` is `#[should_panic]` rather
-than ignored: it asserts today's behaviour so that converting the password
-cipher to `Result` fails there on purpose.
+(`varstring_roundtrips_up_to_capacity` and `hash_inputs_are_unambiguously_framed`
+were on this list and now pass: the two-byte VarString prefix and length-prefixed
+hash inputs both landed. `wrong_key_returns_an_error_rather_than_aborting` was
+`#[should_panic]` until the decryptor returned `Result`, and now asserts
+`Err(AuthFailed)`.)
 
 External ground truth, rather than self-consistency, where it exists:
 
@@ -481,31 +454,76 @@ The extraction into a separate `no_std` crate is still worth doing. It is easier
 now than it was: the types are sound, the encoding is explicit, and the only
 schema coupling left is the four struct definitions and their traits.
 
-## 15. Key material cannot currently be zeroized
+## 15. Key material is no longer `Copy`; zeroizing it is now possible
 
-Every generated key-bearing struct derives `Copy` —
-`MlDsa44/65/87Keypair`, `MlKem512/768/1024Keypair`, `AloeRng`, all of them.
-`Copy` and `Drop` are mutually exclusive in Rust, so `ZeroizeOnDrop` cannot be
-implemented on any of them. Adding `zeroize` as a dependency today would
-therefore protect nothing.
+Key-bearing structs and every struct that contains one no longer derive
+`Copy`: the ML-DSA and ML-KEM keypairs, the KEM encapsulation results (they
+hold the shared secret), `PasswordCipher` and both chunk results, `AloeRng`
+and its four step results, `RecoveryKey`/`RecoverableSecret`, and
+`TotpCredential`. Twenty structs in all. Public-key-only types — the
+verifiers and encapsulators — and the general-purpose Var types keep `Copy`.
 
-(`zeroize` and `subtle` are already in the tree transitively, via
-`chacha20poly1305` and `cipher`. RustCrypto uses them for its own internal key
-material — the ChaCha20Poly1305 key is wiped on drop. Neither is a direct
-dependency, and neither is referenced anywhere in `src/`.)
+The reason `Copy` had to go: `Copy` and `Drop` are mutually exclusive in
+Rust, so `ZeroizeOnDrop` could not be implemented on any of them, and a
+`Copy` seed is silently duplicated on every assignment and pass-by-value —
+there is no way to know how many copies of a private seed exist or to clear
+them. For a 32-byte ML-DSA seed that is the entire private key.
 
-The consequence is larger than a missing wipe: a `Copy` seed is silently
-duplicated on every assignment and every pass-by-value, so there is no way to
-know how many copies of a private seed exist or to clear them. For a 32-byte
-ML-DSA seed that is the entire private key.
+One codegen consequence: `derive(Clone)` on a `#[repr(C, packed)]` struct
+clones by *moving* each field (the derive refuses references to packed
+fields), which fails as soon as a field is itself a non-Copy struct. So for
+any schema struct whose derives lack `Copy`, `build.rs` strips `Clone` from
+the derive list and emits a manual field-wise impl instead — sound because
+hand-written code may reference a packed field whose type has alignment 1,
+which every generated struct does.
 
-This lands squarely on the root-versus-delegate type split in section 5. A root
-identity that may live offline and a working delegate that should be wiped after
-use cannot both be `Copy`. Removing `Copy` from the key structs is the
-prerequisite for any key hygiene at all, and it is a schema change (the
-`derives` field) with wide ripple — every current pass-by-value becomes a move
-or a borrow. Worth doing deliberately, as part of the identity layer, rather
-than piecemeal.
+Removing `Copy` is the prerequisite; the wipe itself is still future work.
+`zeroize` remains a to-be-added dependency of the identity layer (section 5),
+and the Var types inside `TotpCredential` are still `Copy` at their own
+level. (`zeroize` and `subtle` are already in the tree transitively via
+`chacha20poly1305` — RustCrypto wipes its own internal key material.) The
+recovery MAC comparison, previously a variable-time `assert_eq!`, is now a
+dependency-free constant-time fold — see section 16.
+
+## 16. The wire error channel
+
+Built as agreed in section 7, with the details that surfaced in the doing:
+
+- **`StatusCode` is a schema enum** (`aloecrypt_api`, `repr_type: u16`), so
+  the same codes with the same numbering generate into every language. Codes
+  are coarse on purpose: `Ok`, `AuthFailed`, `BadEncoding`, `BadArgument`,
+  `Unsupported`, `Unspecified`. For authenticated decryption, "wrong key" and
+  "altered ciphertext" share `AuthFailed` deliberately — distinguishing them
+  is an oracle. The schema descriptions say so, so nobody helpfully splits
+  them.
+- **Every export returns a uniform 2-byte little-endian status prefix** ahead
+  of its payload. On any non-`Ok` status the payload is *absent*, not zeroed:
+  a caller that skips the check gets a short read, never plausible-looking
+  key bytes. Infallible exports always send `Ok`, so there is exactly one
+  format to reason about.
+- **`Unspecified` (65535) is the enum's default member**, which is what an
+  unrecognized code decodes to — an unknown status can never read as success.
+  The lint enforces this contract: `StatusCode` must exist, `Ok` must be 0,
+  and `Ok` must not be the default.
+- **The schema marks fallible functions** with `"fallible": "true"`. In Rust
+  the generated trait signature becomes `Result<T, StatusCode>`; in Python
+  the wrapper raises `AloecryptStatusError`. Infallible functions keep their
+  bare return — the prefix is uniform on the wire, but only a function that
+  can actually fail forces callers through a `Result`.
+- **`src/error.rs` folded into the generated type**, as planned. It now
+  re-exports `StatusCode`/`StatusCodeEnum` and defines `AloecryptResult<T>`;
+  the hand-written `AloecryptError` is gone.
+- **`authorize_recovery` returns `Err(AuthFailed)`** instead of ending in
+  `assert_eq!` on the MAC, and the comparison is now constant time — a
+  dependency-free XOR fold with a `core::hint::black_box` on the
+  accumulator, branch-once-at-the-end. (`subtle::ConstantTimeEq` remains the
+  right tool once the identity layer adds the dependency.)
+- **The password chunk functions are exported** (`password_api`), which makes
+  the decryptor the reference fallible export: it was the function that could
+  not cross the wire while failure meant `panic` under `panic = "abort"`.
+- CI exercises the decode path with a stub plugin: `Ok` strips the prefix, a
+  non-`Ok` raises, and a short or empty reply raises `Unspecified` rather
+  than being indexed blindly.
 
 ## Next
 
@@ -513,19 +531,22 @@ In rough order of value, and roughly independent of each other:
 
 1. **Password KDF** (section 7). Decided in principle, not built. Closes the
    last `#[ignore]`d test.
-2. **Wire error codes** (section 7). Agreed shape, not built. Unblocks every
-   future fallible export, and `authorize_recovery` specifically.
-3. **Remove `Copy` from key structs** (section 15). Prerequisite for zeroizing
-   anything. Do it with the identity layer's type split, not before.
+2. ~~Wire error codes~~ — **done**, section 16. `authorize_recovery` and the
+   password decryptor return errors across the wire; the lint guards the
+   status contract.
+3. ~~Remove `Copy` from key structs~~ — **done**, section 15. The zeroize
+   wipe itself is still open and belongs to the identity layer's type split.
 4. **The document layer** (section 3). Armour, extensible envelope, canonical
    signing bytes, `AloecryptSignable`. This is the phase that makes certs, CSRs
    and revocations one problem instead of four, and nothing after it can start
    until it exists.
-5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` runs 406 checks:
-   every `impls` pair resolving, every referenced type existing, enum
-   discriminants unique, no name shadowed across namespaces, and a cross-check
-   against what `meta.py` actually loaded, which is what catches a silently
-   dropped struct. `make generate` runs it first; CI runs it separately.
+5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (482 checks
+   now, grown with the status contract): every `impls` pair resolving, every
+   referenced type existing, enum discriminants unique and defaults present,
+   no name shadowed across namespaces, and a cross-check against what
+   `meta.py` actually loaded, which is what catches a silently dropped
+   struct. `make generate` runs it first; CI runs it separately.
 6. **Finish or delete `gen_ts.py`** (section 8). It cannot run today, which
    makes the TypeScript half of "multiple entrypoints" further away than the
-   file's presence suggests.
+   file's presence suggests. If kept, its first real feature is the status
+   prefix from section 16.

@@ -236,7 +236,8 @@ fn main() {
         recovery_key.mac,
         &secret_ikm,
         secret_domain,
-    );
+    )
+    .expect("a matching MAC must authorize");
 
     // Recoverer combines private key to recover secret
     let recovered_secret =

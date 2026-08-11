@@ -5,7 +5,7 @@
 // and explained rather than deleted, so the suite records the gap and fails
 // loudly when someone changes it -- see doc/DESIGN.md.
 
-use aloecrypt_core::error::AloecryptError;
+use aloecrypt_core::error::{StatusCode, StatusCodeEnum};
 use aloecrypt_core::hash::*;
 use aloecrypt_core::password::*;
 use aloecrypt_core::password_api::*;
@@ -112,11 +112,7 @@ fn encrypt_all(data: &[u8], key_byte: u8) -> Vec<u8> {
     out
 }
 
-fn decrypt_all(
-    ciphertext: &[u8],
-    plain_len: usize,
-    key_byte: u8,
-) -> Result<Vec<u8>, AloecryptError> {
+fn decrypt_all(ciphertext: &[u8], plain_len: usize, key_byte: u8) -> Result<Vec<u8>, StatusCode> {
     let mut cipher = PasswordCipher {
         key: [key_byte; PBKDF_KEY_SZ],
         nonce: [9u8; PASSWORD_NONCE_SZ],
@@ -177,7 +173,7 @@ fn wrong_key_returns_an_error_rather_than_aborting() {
     let ciphertext = encrypt_all(&data, 0x11);
     assert_eq!(
         decrypt_all(&ciphertext, data.len(), 0x22),
-        Err(AloecryptError::DecryptAuthFailed),
+        Err(StatusCodeEnum::AuthFailed.into()),
         "a wrong key must be reported, not panicked on"
     );
 }
@@ -189,7 +185,7 @@ fn altered_ciphertext_is_rejected() {
     ciphertext[10] ^= 0x01;
     assert_eq!(
         decrypt_all(&ciphertext, data.len(), 0x33),
-        Err(AloecryptError::DecryptAuthFailed),
+        Err(StatusCodeEnum::AuthFailed.into()),
         "a flipped ciphertext bit must fail authentication"
     );
 }

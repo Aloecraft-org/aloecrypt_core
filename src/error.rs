@@ -1,29 +1,30 @@
 // src/error.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 //
-// Errors for operations that can fail on attacker-controlled input.
+// The error channel, on both sides of the wire.
 //
-// Deliberately a plain Rust type and NOT a schema type. The plugin wire format
-// has no error channel -- every export returns raw bytes with no discriminant --
-// so giving a wire-exported function a Result would require first deciding how
-// an error crosses that boundary. That decision is still open (see
-// doc/DESIGN.md), and inventing a representation here would pre-empt it.
+// The error taxonomy is `StatusCode` in the schema (`aloecrypt_api`), so the
+// same codes with the same numbering generate into Rust, Python and
+// TypeScript. On the wire, every plugin export returns a 2-byte little-endian
+// `StatusCode` ahead of its payload; the payload is present only when the
+// status is `Ok`, so a caller that skips the check gets a short read rather
+// than plausible-looking bytes. Infallible exports always send `Ok` -- the
+// prefix is uniform so there is exactly one format to reason about.
 //
-// Until it is settled, this type is used only on functions that are NOT
-// exported through the schema. `authorize_recovery` is the one wire-exported
-// function that still panics on a failed check, and it stays that way on
-// purpose rather than being given a representation nobody has agreed to.
+// In Rust, a fallible function returns `Result<T, StatusCode>`; the schema
+// marks it with `"fallible": "true"` and the generated trait signature
+// matches. `StatusCode` is the transparent newtype that crosses the wire;
+// `StatusCodeEnum` is the matching Rust enum for ergonomic construction and
+// matching, converted with `.into()` in either direction.
+//
+// Codes are coarse on purpose. For authenticated decryption, "wrong key" and
+// "altered ciphertext" share `AuthFailed` deliberately: distinguishing them
+// would hand an attacker an oracle. Resist splitting codes.
 
-/// A cryptographic operation failed.
-///
-/// Carries no detail about *why* on purpose: for authenticated decryption the
-/// only safe answer to a caller is that it did not authenticate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AloecryptError {
-    /// AEAD authentication failed: wrong key, wrong nonce, or altered
-    /// ciphertext. These are indistinguishable to the caller by design.
-    DecryptAuthFailed,
-}
+pub use crate::aloecrypt_api::{StatusCode, StatusCodeEnum};
+
+/// The `Result` shape used by every fallible function in this crate.
+pub type AloecryptResult<T> = Result<T, StatusCode>;
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //

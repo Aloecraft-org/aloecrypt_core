@@ -105,6 +105,10 @@ class MetaFunction(BaseModel):
     instance_str: Optional[str] = Field(None)
     instance_of: Optional[str] = Field(None)
     pure: Optional[bool] = Field(False)
+    # A fallible function can return a non-Ok StatusCode over the wire, in
+    # which case the payload is absent. Infallible functions carry the same
+    # uniform 2-byte status prefix, always Ok.
+    fallible: bool = Field(False)
 
     @property
     def is_class_function(self) -> bool:
@@ -422,7 +426,8 @@ def load_meta(filename: str) -> APIMetaData:
                     instance_str=func.get("instance"),
                     instance_of=tname,
                     params=params,
-                    ret_str=func.get("return"))
+                    ret_str=func.get("return"),
+                    fallible=str(func.get("fallible", "")).strip() == "true")
             meta_traits[tname] = MetaTrait(
                 name=tname, namespace=ns_name,
                 generics=generics, functions=functions)
@@ -462,7 +467,8 @@ def load_meta(filename: str) -> APIMetaData:
                 namespace=ns_name,
                 params=params,
                 ret_str=func.get("return"),
-                pure=True)
+                pure=True,
+                fallible=str(func.get("fallible", "")).strip() == "true")
 
     # ── Pass 7: Empty consts (informational, not critical for codegen) ──
     for ns_name, ns_val in schema.items():

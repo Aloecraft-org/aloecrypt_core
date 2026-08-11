@@ -114,6 +114,23 @@ class PythonGenerator(LangGenerator):
             "        return self._plugin",
             "",
             "",
+            "class AloecryptStatusError(Exception):",
+            '    """A plugin export returned a non-Ok StatusCode.',
+            "",
+            "    Every export returns a 2-byte little-endian status ahead of its",
+            "    payload; on any non-zero status the payload is absent and this is",
+            "    raised instead. The code is deliberately coarse -- for authenticated",
+            "    decryption, a wrong key and an altered ciphertext are the same code",
+            "    on purpose.",
+            '    """',
+            "",
+            "    def __init__(self, code: int):",
+            "        self.code = code",
+            "        # StatusCode is defined later in this module; by the time an",
+            "        # error can be raised the module is fully loaded.",
+            "        super().__init__(f\"plugin returned {StatusCode.name_of(code)} ({code})\")",
+            "",
+            "",
         ]
 
     def file_footer(self) -> list[str]:
@@ -458,6 +475,19 @@ class PythonGenerator(LangGenerator):
 
     def emit_pack_helpers(self) -> list[str]:
         return [
+            "def _check_status(result: bytes) -> bytes:",
+            '    """Strip the uniform 2-byte status prefix, raising on a non-Ok code.',
+            "",
+            "    A short result (fewer than 2 bytes) is treated as Unspecified rather",
+            "    than indexed blindly: a malformed reply must never read as success.",
+            '    """',
+            "    if len(result) < 2:",
+            "        raise AloecryptStatusError(StatusCode.Unspecified)",
+            "    status = _struct.unpack_from('<H', result, 0)[0]",
+            "    if status != 0:",
+            "        raise AloecryptStatusError(status)",
+            "    return bytes(result[2:])",
+            "",
             "def _pack_varlen(data: bytes) -> bytes:",
             "    return _struct.pack('<I', len(data)) + data",
             "",
@@ -507,6 +537,8 @@ class PythonGenerator(LangGenerator):
 
         sig = f"def {call.export_name}({', '.join(py_params)}) -> {ret_py}:"
         lines.append(sig)
+        if call.fallible:
+            lines.append('    """Raises AloecryptStatusError on a non-Ok status."""')
 
         # Pack args
         lines.append("    parts: list[bytes] = []")
@@ -517,7 +549,9 @@ class PythonGenerator(LangGenerator):
             lines.append(f"    parts.append({self._pack_expr(pf)})")
 
         lines.append("    payload = b''.join(parts)")
-        lines.append(f"    result = plugin.call('{call.export_name}', payload)")
+        # Every export carries the status prefix; _check_status strips it or
+        # raises. Infallible exports always send Ok, so the check is free.
+        lines.append(f"    result = _check_status(plugin.call('{call.export_name}', payload))")
 
         # Unpack result
         if call.return_type is None:

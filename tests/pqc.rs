@@ -3,6 +3,7 @@
 // trips, and the negative cases that matter.
 
 use aloecrypt_core::dsa_api::*;
+use aloecrypt_core::error::StatusCodeEnum;
 use aloecrypt_core::kem_api::*;
 use aloecrypt_core::recovery::*;
 use aloecrypt_core::recovery_api::*;
@@ -208,11 +209,62 @@ fn recoverable_secret_roundtrips_through_the_authorizer() {
         recovery_key.mac,
         ikm,
         domain,
-    );
+    )
+    .expect("a matching MAC must authorize");
     let recovered = RecoverableSecret::recover(authorization, &recovery_key.secret);
 
     assert_eq!(
         recovered, recoverable.secret,
         "recovery did not reproduce the inner secret"
+    );
+}
+
+#[test]
+fn a_wrong_mac_is_refused_with_auth_failed() {
+    let mut authorizer_seed = [0u8; 64];
+    for (i, b) in authorizer_seed.iter_mut().enumerate() {
+        *b = (i as u8).wrapping_mul(43);
+    }
+    let recovery_secret: RecoverySecret = [7u8; RECOVERY_PRIVKEY_SZ];
+    let prk_seed: MlKemPrkSeed = [11u8; MLKEM_PRK_SEED_SZ];
+    let ikm = b"recovery input keying material";
+    let domain = "aloecrypt.test.recovery";
+
+    let authorizer = MlKem512Keypair::from_seed(&authorizer_seed);
+    let recoverable = RecoverableSecret::create(
+        authorizer.get_encapsulator(),
+        recovery_secret,
+        prk_seed,
+        ikm,
+        domain,
+    );
+    let recovery_key = recoverable.recovery_key;
+
+    let mut tampered_mac = recovery_key.mac;
+    tampered_mac[0] ^= 0x01;
+    assert_eq!(
+        authorize_recovery(
+            authorizer.clone(),
+            &recovery_key.cipher,
+            tampered_mac,
+            ikm,
+            domain,
+        ),
+        Err(StatusCodeEnum::AuthFailed.into()),
+        "a tampered MAC must refuse authorization"
+    );
+
+    // The same failure for the right MAC under the wrong domain: the caller
+    // cannot tell which input was wrong, by design.
+    assert_eq!(
+        authorize_recovery(
+            authorizer,
+            &recovery_key.cipher,
+            recovery_key.mac,
+            ikm,
+            "aloecrypt.test.other-domain",
+        ),
+        Err(StatusCodeEnum::AuthFailed.into()),
+        "a wrong domain must refuse authorization with the same code"
     );
 }
