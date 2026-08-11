@@ -17,7 +17,7 @@ fn main() {
     // --- Path 1: 16 bytes (12-word mnemonic) ---
     let mut orig_16 = [0u8; 16];
     rng.fill_bytes(&mut orig_16);
-    let enc_16 = to_bip39(&orig_16);
+    let enc_16 = to_bip39_secret(&orig_16);
 
     println!("--- 16-byte (12 words) BIP39 ---");
     #[cfg(feature = "bip39_words")]
@@ -33,13 +33,13 @@ fn main() {
             "Mnemonic parsing mismatch"
         );
 
-        let decoded = from_bip39(parsed.to_u16_arr());
+        let decoded = from_bip39_secret(parsed.to_u16_arr());
         assert_eq!(&decoded.value[1..1 + orig_16.len()], &orig_16);
         println!("SUCCESS: 16-byte hex fully round-tripped!\n");
     }
     #[cfg(not(feature = "bip39_words"))]
     {
-        let decoded = from_bip39(enc_16.to_u16_arr());
+        let decoded = from_bip39_secret(enc_16.to_u16_arr());
         assert_eq!(&decoded.value[1..1 + orig_16.len()], &orig_16);
         println!("SUCCESS: 16-byte hex fully round-tripped! (Mnemonics disabled)\n");
     }
@@ -47,7 +47,7 @@ fn main() {
     // --- Path 2: 32 bytes (24-word mnemonic) ---
     let mut orig_32 = [0u8; 32];
     rng.fill_bytes(&mut orig_32);
-    let enc_32 = to_bip39(&orig_32);
+    let enc_32 = to_bip39_secret(&orig_32);
 
     println!("--- 32-byte (24 words) BIP39 ---");
     #[cfg(feature = "bip39_words")]
@@ -62,13 +62,13 @@ fn main() {
             "Mnemonic parsing mismatch"
         );
 
-        let decoded = from_bip39(parsed.to_u16_arr());
+        let decoded = from_bip39_secret(parsed.to_u16_arr());
         assert_eq!(&decoded.value[1..1 + orig_32.len()], &orig_32);
         println!("SUCCESS: 32-byte hex fully round-tripped!");
     }
     #[cfg(not(feature = "bip39_words"))]
     {
-        let decoded = from_bip39(enc_32.to_u16_arr());
+        let decoded = from_bip39_secret(enc_32.to_u16_arr());
         assert_eq!(&decoded.value[1..1 + orig_32.len()], &orig_32);
         println!("SUCCESS: 32-byte hex fully round-tripped! (Mnemonics disabled)");
     }

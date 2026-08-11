@@ -119,10 +119,10 @@
         ],
         "functions": [],
         "impls" : [
-            {"trait": "VarString511", "struct": "VarString"},
-            {"trait": "VarU16_255",   "struct": "VarU16"   },
-            {"trait": "VarChar255",   "struct": "VarChar"  },
-            {"trait": "VarByte255",   "struct": "VarByte"  }
+            {"trait": "VarString", "struct": "VarString511"},
+            {"trait": "VarU16",    "struct": "VarU16_255"  },
+            {"trait": "VarChar",   "struct": "VarChar255"  },
+            {"trait": "VarByte",   "struct": "VarByte255"  }
         ]
     },
     "proof_api": {

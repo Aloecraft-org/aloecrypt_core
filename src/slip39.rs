@@ -57,6 +57,7 @@ pub fn from_slip39_secret(data: &[u16]) -> VarByte255 {
     VarByte255 { value }
 }
 
+#[cfg(feature = "slip39_words")]
 pub fn to_slip39_mnemonic(indices: &[u16]) -> VarString511 {
     let mut out = VarString511 { value: EMPTY_B512 };
 
@@ -77,6 +78,7 @@ pub fn to_slip39_mnemonic(indices: &[u16]) -> VarString511 {
     out
 }
 
+#[cfg(feature = "slip39_words")]
 pub fn from_slip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
     let mut arr = [0u16; 255];
     let mut len = 0;

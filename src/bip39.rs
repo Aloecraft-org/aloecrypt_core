@@ -46,6 +46,7 @@ pub fn from_bip39_secret(data: &[u16]) -> VarByte255 {
     VarByte255 { value }
 }
 
+#[cfg(feature = "bip39_words")]
 pub fn to_bip39_mnemonic(indices: &[u16]) -> VarString511 {
     let mut out = VarString511::empty();
 
@@ -68,6 +69,7 @@ pub fn to_bip39_mnemonic(indices: &[u16]) -> VarString511 {
     out
 }
 
+#[cfg(feature = "bip39_words")]
 pub fn from_bip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
     let mut arr = [0u16; 255];
     let mut len = 0;

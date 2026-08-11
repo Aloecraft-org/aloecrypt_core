@@ -1,0 +1,157 @@
+name: ci
+
+# Every job here asserts something that passes today. Nothing is marked
+# continue-on-error: a red job means a real regression, not a known gap.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # NOT set to "-D warnings": the crate currently emits 69 warnings (mostly
+  # unused imports and non-upper-case generated consts). Turn this on once
+  # they are cleared, or it just trains people to ignore a red pipeline.
+
+jobs:
+  # A feature flag that cannot be turned off is not a feature flag. The library
+  # itself needs no host entropy source and no wordlists; both are opt-in.
+  features:
+    name: features / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            flags: ""
+          - name: minimal
+            flags: "--no-default-features"
+          - name: wordlists-only
+            flags: "--no-default-features --features slip39_words,bip39_words"
+          - name: bip39-only
+            flags: "--no-default-features --features bip39_words"
+          - name: slip39-only
+            flags: "--no-default-features --features slip39_words"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build lib
+        run: cargo build --lib ${{ matrix.flags }}
+
+  # The crate is no_std/no_main. These are the targets it has to keep reaching:
+  # wasm for the plugin surface, thumbv8m for the RP2350 (Cortex-M33).
+  cross:
+    name: cross / ${{ matrix.target }} ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - wasm32-wasip2
+          - wasm32-unknown-unknown
+          - thumbv8m.main-none-eabihf
+          - thumbv7em-none-eabihf
+        include:
+          - name: minimal
+            flags: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: build lib (minimal)
+        run: cargo build --lib --target ${{ matrix.target }} --no-default-features
+      - name: build lib (with wordlists)
+        run: >
+          cargo build --lib --target ${{ matrix.target }}
+          --no-default-features --features slip39_words,bip39_words
+
+  # The example binaries link std and seed from the host, so they are host-only.
+  # align is the integration smoke test (see Makefile).
+  host:
+    name: host build + smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --check
+      - name: build bins
+        run: cargo build --bins
+      - name: build release
+        run: cargo build --release --lib --bins
+      - name: align smoke test
+        run: cargo run --release --bin align
+      - name: bip39 round trip
+        run: cargo run --release --bin bip39
+      - name: slip39 round trip
+        run: cargo run --release --bin slip39
+
+  # Guards the #[inline(never)] stack decomposition in src/dsa.rs. Host-arch
+  # numbers, so this catches regressions rather than sizing the device.
+  stack:
+    name: stack budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: stack high-water check
+        run: cargo run --release --bin stackcheck
+
+  # The schema drives Rust, Python and TypeScript. A malformed schema does not
+  # necessarily break the Rust build -- a mismatched impls entry silently drops
+  # every export for that namespace -- so assert the generated surface directly.
+  codegen:
+    name: codegen / python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: Swatinem/rust-cache@v2
+      - name: install generator deps
+        run: pip install pydantic
+      - name: generate python bindings
+        run: make generate
+      - name: every namespace exports something
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=.generated/gen_py/aloecrypt_core.py
+          test -f "$out"
+          fail=0
+          # KNOWN GAP -- totp_api is absent from this list on purpose.
+          # generator/meta.py has no enum handling, so it cannot size
+          # TotpAlgorithm; TotpCredential therefore fails size resolution and is
+          # dropped from meta_structs entirely, taking its impl and all five of
+          # its exports with it. Any future struct with an enum field will
+          # vanish the same way, silently. Add totp_api here once meta.py
+          # registers enum repr sizes.
+          for ns in aloecrypt_api dsa_api kem_api hash_api pkdf_api \
+                    password_api rng_api recovery_api; do
+            n=$(grep -cE "^def ${ns}___" "$out" || true)
+            printf '%-16s %3d exports\n' "$ns" "$n"
+            if [ "$n" -eq 0 ]; then
+              echo "  ERROR: ${ns} generated no plugin exports" >&2
+              fail=1
+            fi
+          done
+          echo "--- known gap ---"
+          printf '%-16s %3d exports (expected 0, see comment above)\n' \
+            totp_api "$(grep -cE '^def totp_api___' "$out" || true)"
+          exit $fail

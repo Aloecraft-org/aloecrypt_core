@@ -401,7 +401,7 @@ def load_meta(filename: str) -> APIMetaData:
             for p in func.get("params", []):
                 
                 if "type" not in p:
-                    print(f"OH NO - {ns_name} {p["name"]}")
+                    print(f"OH NO - {ns_name} {p.get('name')}")
                 pname = p["name"]
                 params[pname] = MetaFnParam(
                     name=pname, type_str=p["type"].strip())

@@ -409,12 +409,9 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
     }
 }
 
-fn generate_api(jsonfile: &str, outfile: PathBuf) {
+fn generate_api(parsed: &serde_json::Value, outfile: PathBuf) {
     let mut out =
         fs::File::create(&outfile).expect(format!("failed to create {:?}", outfile).as_str());
-    let raw = fs::read_to_string(&jsonfile).expect(format!("failed to read {}", jsonfile).as_str());
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).expect(format!("failed to parse {}", jsonfile).as_str());
 
     if let Some(api) = parsed.as_object() {
         for namespace in api.keys() {
@@ -475,9 +472,165 @@ fn generate_api(jsonfile: &str, outfile: PathBuf) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Doc merge — a port of doc/merge_docs.jq.
+//
+// config/api_core.json is the source of truth; doc/api_core_docs.json overlays
+// descriptions onto it. Entries are matched by "name" at every level; a source
+// entry with no matching doc entry passes through untouched, and a doc entry
+// with no matching source entry is ignored. Doc values win on key collisions,
+// but a doc array never replaces a source array wholesale — nested arrays
+// (enum members, struct fields, trait functions, function params) are merged
+// by name in the same way.
+//
+// serde_json is built with "preserve_order", so key insertion order survives
+// and Map::insert keeps an existing key in place — matching jq's `+` operator.
+// ---------------------------------------------------------------------------
+
+fn doc_for<'a>(
+    overlay: Option<&'a serde_json::Value>,
+    name: &str,
+) -> Option<&'a serde_json::Value> {
+    overlay?
+        .as_array()?
+        .iter()
+        .find(|entry| entry.get("name").and_then(|n| n.as_str()) == Some(name))
+}
+
+fn entry_name(entry: &serde_json::Value) -> Option<String> {
+    entry
+        .get("name")
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Copy every key of `doc` onto `item`, except those named in `skip`.
+fn overlay_fields(item: &mut serde_json::Value, doc: &serde_json::Value, skip: &[&str]) {
+    let (Some(target), Some(source)) = (item.as_object_mut(), doc.as_object()) else {
+        return;
+    };
+    for (key, value) in source {
+        if skip.contains(&key.as_str()) {
+            continue;
+        }
+        target.insert(key.clone(), value.clone());
+    }
+}
+
+/// Merge a flat array of named objects.
+fn merge_by_name(base: &mut serde_json::Value, overlay: Option<&serde_json::Value>) {
+    let Some(items) = base.as_array_mut() else {
+        return;
+    };
+    for item in items.iter_mut() {
+        let Some(name) = entry_name(item) else {
+            continue;
+        };
+        if let Some(doc) = doc_for(overlay, &name).cloned() {
+            overlay_fields(item, &doc, &[]);
+        }
+    }
+}
+
+/// Merge an array of named objects that each contain a nested named array
+/// (`members` for enums, `fields` for structs, `params` for functions).
+fn merge_nested(base: &mut serde_json::Value, overlay: Option<&serde_json::Value>, nested: &str) {
+    let Some(items) = base.as_array_mut() else {
+        return;
+    };
+    for item in items.iter_mut() {
+        let Some(name) = entry_name(item) else {
+            continue;
+        };
+        let Some(doc) = doc_for(overlay, &name).cloned() else {
+            continue;
+        };
+        overlay_fields(item, &doc, &[nested]);
+        if let (Some(inner), Some(doc_inner)) = (item.get_mut(nested), doc.get(nested)) {
+            merge_by_name(inner, Some(doc_inner));
+        }
+    }
+}
+
+/// Traits nest one level deeper: trait -> functions -> params.
+fn merge_traits(base: &mut serde_json::Value, overlay: Option<&serde_json::Value>) {
+    let Some(items) = base.as_array_mut() else {
+        return;
+    };
+    for item in items.iter_mut() {
+        let Some(name) = entry_name(item) else {
+            continue;
+        };
+        let Some(doc) = doc_for(overlay, &name).cloned() else {
+            continue;
+        };
+        overlay_fields(item, &doc, &["functions"]);
+        if let (Some(functions), Some(doc_functions)) =
+            (item.get_mut("functions"), doc.get("functions"))
+        {
+            merge_nested(functions, Some(doc_functions), "params");
+        }
+    }
+}
+
+fn merge_module(src: &mut serde_json::Value, doc: &serde_json::Value) {
+    for key in ["sz_consts", "byte_aliases", "empty_consts"] {
+        if let Some(base) = src.get_mut(key) {
+            merge_by_name(base, doc.get(key));
+        }
+    }
+    if let Some(base) = src.get_mut("enums") {
+        merge_nested(base, doc.get("enums"), "members");
+    }
+    if let Some(base) = src.get_mut("structs") {
+        merge_nested(base, doc.get("structs"), "fields");
+    }
+    if let Some(base) = src.get_mut("traits") {
+        merge_traits(base, doc.get("traits"));
+    }
+    if let Some(base) = src.get_mut("functions") {
+        merge_nested(base, doc.get("functions"), "params");
+    }
+    // "impls" is carried through from the source unchanged.
+}
+
+fn merge_docs(mut src: serde_json::Value, docs: &serde_json::Value) -> serde_json::Value {
+    let empty = serde_json::Value::Object(Default::default());
+    if let Some(modules) = src.as_object_mut() {
+        for (namespace, module) in modules.iter_mut() {
+            let doc_module = docs.get(namespace.as_str()).unwrap_or(&empty);
+            merge_module(module, doc_module);
+        }
+    }
+    src
+}
+
+fn read_json(path: &str) -> serde_json::Value {
+    let raw = fs::read_to_string(path).expect(format!("failed to read {}", path).as_str());
+    serde_json::from_str(&raw).expect(format!("failed to parse {}", path).as_str())
+}
+
 fn main() {
-    println!("cargo:rerun-if-changed=.generated/api_core_merged.json");
+    const SRC: &str = "config/api_core.json";
+    const DOCS: &str = "doc/api_core_docs.json";
+    const MERGED: &str = ".generated/api_core_merged.json";
+
+    println!("cargo:rerun-if-changed={}", SRC);
+    println!("cargo:rerun-if-changed={}", DOCS);
+
+    let merged = merge_docs(read_json(SRC), &read_json(DOCS));
+
+    // The Python and TypeScript generators read the merged schema from disk, so
+    // keep writing it. Emitting it here means there is exactly one implementation
+    // of the merge and no separate `make merge_docs` step to forget.
+    fs::create_dir_all(".generated").expect("failed to create .generated");
+    fs::write(
+        MERGED,
+        serde_json::to_string_pretty(&merged).expect("failed to serialize merged schema"),
+    )
+    .expect("failed to write merged schema");
+
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let out_path = Path::new(&out_dir).join("api_core.rs");
-    generate_api(".generated/api_core_merged.json", out_path);
+    generate_api(&merged, out_path);
 }
