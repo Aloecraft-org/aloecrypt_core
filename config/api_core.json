@@ -1738,6 +1738,12 @@
                 "type": "MlKemPrkSeed"
               }
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ]
       },
@@ -1755,6 +1761,12 @@
                 "type": "MlKemPrkSeed"
               }
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ]
       },
@@ -1772,6 +1784,12 @@
                 "type": "MlKemPrkSeed"
               }
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ]
       },

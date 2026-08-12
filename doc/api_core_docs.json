@@ -687,21 +687,24 @@
                 "name": "IMlKem512Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-512. Used by the initiating party to establish a shared secret with the holder of an ML-KEM-512 keypair.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-512-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {
                 "name": "IMlKem768Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-768.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-768-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {
                 "name": "IMlKem1024Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-1024.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-1024-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {

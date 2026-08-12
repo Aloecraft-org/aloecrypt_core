@@ -304,7 +304,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-131 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+142 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 
@@ -694,6 +694,47 @@ signature — attacker-supplied bytes could abort the process under
 `false` on decode failure, and the tests flip bits deep in signature bytes
 to hold that.
 
+## 20. Encrypt-to-recipient
+
+The sealed counterpart of section 19, sharing its shape deliberately.
+
+**A recipient block mirrors an attestation**: algorithm id, recipient
+address, ML-KEM ciphertext, self-contained in one KemCipher section. The
+sealed payload is one AeadCipher section — the whole payload under
+ChaCha20-Poly1305, ciphertext then 16-byte tag. Decryption answers for one
+key: find the recipient block naming this keypair's algorithm and address,
+decapsulate, open — and `AuthFailed` is the same answer for "not for me",
+"wrong key" (implicit rejection surfacing as a failed tag), and "altered
+ciphertext". Splicing sections between documents fails the same way: each
+encapsulation keys its payload alone.
+
+**The AEAD key is the domain-separated hash of the shared secret**
+(`aloecrypt.encrypt.mlkem768.v1`, …) — never the raw secret, so a future
+second use of the same secret (a MAC, a wrapped key) can never collide with
+the payload key. **The nonce is zero.** Every encapsulation yields a fresh
+single-use secret, so the (key, nonce) pair cannot repeat, and a wire nonce
+would only be a decision handed to an attacker (the same argument age
+settled on). **One tag covers the whole payload** — a chunked stream (the
+password cipher's shape) authenticates each chunk but not the whole, and
+can be truncated at a chunk boundary undetected; a document must
+authenticate in full or not at all. The chunked shape stays right for the
+plugin wire, where fixed transfer sizes rule.
+
+**One recipient per document, for now.** Per-recipient encapsulation
+yields per-recipient secrets, so several recipients need a content key
+wrapped once per recipient — machinery this version does not carry. The
+section format doesn't prejudge it: several KemCipher sections already
+parse, and wrapping can arrive as a longer recipient-block layout under a
+new algorithm id or a critical section. Known gap, deliberate.
+
+**Encapsulators gained addresses** the same way verifiers did (section
+19): `AloecryptAddressable` plus per-algorithm domains
+(`aloecrypt.address.mlkem512.v1`, …), `address()` on the encapsulator
+traits in the schema. And as with signing, a pinned armored fixture
+(`tests/fixtures/encrypted_768.asc`) locks the construction — encapsulation
+is deterministic given the caller's PRK seed, so the fixture is re-derived
+byte-for-byte and decrypted.
+
 ## Next
 
 In rough order of value, and roughly independent of each other:
@@ -705,12 +746,13 @@ In rough order of value, and roughly independent of each other:
    status contract.
 3. ~~Remove `Copy` from key structs~~ — **done**, section 15. The zeroize
    wipe itself is still open and belongs to the identity layer's type split.
-4. **The document layer** (section 3) — transport **done** (section 18:
-   envelope and armor) and detached signatures **done** (section 19, with
-   address derivation). Remaining: encrypt-to-recipient, and the
-   struct-level canonical-signing-bytes guarantee with `AloecryptSignable`,
-   which lands with the first signable document type — the parts that make
-   certs, CSRs and revocations one problem instead of four.
+4. **The document layer** (section 3) — transport (section 18), detached
+   signatures (section 19) and encrypt-to-recipient (section 20) **done**.
+   Remaining: multi-recipient encryption (the wrapped content key, section
+   20), and the struct-level canonical-signing-bytes guarantee with
+   `AloecryptSignable`, which lands with the first signable document type —
+   the parts that make certs, CSRs and revocations one problem instead of
+   four.
 5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (925 checks
    now, grown with the status contract): every `impls` pair resolving, every
    referenced type existing, enum discriminants unique and defaults present,

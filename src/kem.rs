@@ -8,6 +8,9 @@ use ml_kem::{
 use super::kem_api::*;
 use super::rng_api::*;
 
+use crate::aloecrypt_api::{AloecryptAddress, AloecryptAddressable};
+use crate::hash::domain_hash;
+
 impl MlKem512Keypair {
     fn _encapsulation_key(&self) -> EncapsulationKey<MlKem512> {
         EncapsulationKey::<MlKem512>::new(&self.public_key.into()).unwrap()
@@ -139,7 +142,35 @@ impl IMlKem1024Keypair for MlKem1024Keypair {
     }
 }
 
+// An encapsulator's address follows the same derivation as a verifier's
+// (see src/dsa.rs): the domain-separated hash of the key's addressing
+// material under a domain string naming the algorithm.
+const MLKEM_512_ADDRESS_DOMAIN: &str = "aloecrypt.address.mlkem512.v1";
+const MLKEM_768_ADDRESS_DOMAIN: &str = "aloecrypt.address.mlkem768.v1";
+const MLKEM_1024_ADDRESS_DOMAIN: &str = "aloecrypt.address.mlkem1024.v1";
+
+impl AloecryptAddressable for MlKem512Encapsulator {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
+    }
+}
+
+impl AloecryptAddressable for MlKem768Encapsulator {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
+    }
+}
+
+impl AloecryptAddressable for MlKem1024Encapsulator {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
+    }
+}
+
 impl IMlKem512Encapsulator for MlKem512Encapsulator {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLKEM_512_ADDRESS_DOMAIN)
+    }
     fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem512EncapsulatorResult {
         let mut rng = AloeRng::new(prk);
         let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);
@@ -151,6 +182,9 @@ impl IMlKem512Encapsulator for MlKem512Encapsulator {
 }
 
 impl IMlKem768Encapsulator for MlKem768Encapsulator {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLKEM_768_ADDRESS_DOMAIN)
+    }
     fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem768EncapsulatorResult {
         let mut rng = AloeRng::new(prk);
         let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);
@@ -162,6 +196,9 @@ impl IMlKem768Encapsulator for MlKem768Encapsulator {
 }
 
 impl IMlKem1024Encapsulator for MlKem1024Encapsulator {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLKEM_1024_ADDRESS_DOMAIN)
+    }
     fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem1024EncapsulatorResult {
         let mut rng = AloeRng::new(prk);
         let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);

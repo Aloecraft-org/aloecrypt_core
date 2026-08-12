@@ -15,11 +15,14 @@
 
 use super::document_api::*;
 
-use crate::aloecrypt_api::{ALOECRYPT_ADDRESS_SZ, AloecryptAddress, AloecryptAlgorithmEnum};
+use crate::aloecrypt_api::{
+    ALOECRYPT_ADDRESS_SZ, AloecryptAddress, AloecryptAlgorithmEnum, ENCRYPTED_TAG_SZ,
+};
 use crate::dsa_api::*;
 use crate::error::{AloecryptResult, StatusCodeEnum};
 use crate::hash::domain_hash;
 use crate::hash_api::Hash256;
+use crate::kem_api::*;
 use data_encoding::BASE64;
 
 fn err<T>(code: StatusCodeEnum) -> AloecryptResult<T> {
@@ -89,15 +92,28 @@ impl<'a> EnvelopeWriter<'a> {
     /// `add`, with the section value assembled from `parts` in order --
     /// so a composite value never needs an intermediate buffer.
     pub fn add_parts(&mut self, tag: u16, parts: &[&[u8]]) -> AloecryptResult<()> {
-        if tag == 0 || tag == u16::MAX {
-            return err(StatusCodeEnum::BadArgument);
-        }
         let mut value_len = 0usize;
         for part in parts {
             let Some(total) = value_len.checked_add(part.len()) else {
                 return err(StatusCodeEnum::BadArgument);
             };
             value_len = total;
+        }
+        let value = self.add_reserved(tag, value_len)?;
+        let mut pos = 0;
+        for part in parts {
+            value[pos..pos + part.len()].copy_from_slice(part);
+            pos += part.len();
+        }
+        Ok(())
+    }
+
+    /// Appends a zeroed section of `value_len` bytes and returns its value
+    /// slice for the caller to fill in place -- so a value that is produced
+    /// rather than copied (a ciphertext, say) never needs its own buffer.
+    pub fn add_reserved(&mut self, tag: u16, value_len: usize) -> AloecryptResult<&mut [u8]> {
+        if tag == 0 || tag == u16::MAX {
+            return err(StatusCodeEnum::BadArgument);
         }
         if u32::try_from(value_len).is_err() {
             return err(StatusCodeEnum::BadArgument);
@@ -114,13 +130,10 @@ impl<'a> EnvelopeWriter<'a> {
         }
         self.buf[self.pos..self.pos + 2].copy_from_slice(&tag.to_le_bytes());
         self.buf[self.pos + 2..self.pos + 6].copy_from_slice(&(value_len as u32).to_le_bytes());
-        let mut pos = self.pos + DOC_SECTION_HEADER_SZ;
-        for part in parts {
-            self.buf[pos..pos + part.len()].copy_from_slice(part);
-            pos += part.len();
-        }
+        let value = &mut self.buf[self.pos + DOC_SECTION_HEADER_SZ..end];
+        value.fill(0);
         self.pos = end;
-        Ok(())
+        Ok(value)
     }
 
     /// Ends the envelope, returning how many bytes of the buffer it holds.
@@ -607,6 +620,265 @@ pub fn verify_detached_87(
     } else {
         err(StatusCodeEnum::AuthFailed)
     }
+}
+
+// ---------------------------------------------------- encrypt-to-recipient
+//
+// An encrypted document is an envelope (label ENCRYPTED when armored) of a
+// recipient block and a sealed payload. The recipient block mirrors a
+// signature attestation -- self-contained, one section:
+//
+//   alg u16 LE | recipient address (32 bytes) | ML-KEM ciphertext
+//
+// and the AeadCipher section is the payload sealed with ChaCha20-Poly1305:
+//
+//   ciphertext (payload length) | tag (16 bytes)
+//
+// The AEAD key is the domain-separated hash of the encapsulated shared
+// secret (`aloecrypt.encrypt.mlkem768.v1`, ...), and the nonce is zero:
+// every encapsulation yields a fresh single-use secret, so the (key, nonce)
+// pair can never repeat, and a nonce on the wire would only be a decision
+// for an attacker to make. One tag covers the whole payload, so the
+// document cannot be truncated at any boundary and still authenticate.
+// One recipient per document for now: several recipients need a wrapped
+// content key, which is recorded as the open half of this design.
+
+pub const ENCRYPTED_LABEL: &str = "ENCRYPTED";
+const MLKEM_512_ENCRYPT_DOMAIN: &str = "aloecrypt.encrypt.mlkem512.v1";
+const MLKEM_768_ENCRYPT_DOMAIN: &str = "aloecrypt.encrypt.mlkem768.v1";
+const MLKEM_1024_ENCRYPT_DOMAIN: &str = "aloecrypt.encrypt.mlkem1024.v1";
+/// Algorithm id + recipient address, ahead of the KEM ciphertext.
+const KEM_VALUE_HEADER_SZ: usize = 2 + ALOECRYPT_ADDRESS_SZ;
+
+/// Bytes an encrypted document occupies, given the KEM's ciphertext size
+/// (`MLKEM_768_CIPHER_SZ` and friends) and the payload length.
+pub const fn encrypted_document_size(kem_cipher_sz: usize, payload_len: usize) -> usize {
+    DOC_HEADER_SZ
+        + DOC_SECTION_HEADER_SZ
+        + KEM_VALUE_HEADER_SZ
+        + kem_cipher_sz
+        + DOC_SECTION_HEADER_SZ
+        + payload_len
+        + ENCRYPTED_TAG_SZ
+}
+
+/// Builds the envelope and seals `payload` in place inside `out`.
+fn seal_document(
+    alg: AloecryptAlgorithmEnum,
+    address: &AloecryptAddress,
+    kem_cipher: &[u8],
+    key: &Hash256,
+    payload: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    use chacha20poly1305::{
+        ChaCha20Poly1305, Nonce,
+        aead::{AeadInPlace, KeyInit},
+    };
+    let mut writer = EnvelopeWriter::new(out)?;
+    writer.add_parts(
+        SectionTagEnum::KemCipher as u16,
+        &[&(alg as u16).to_le_bytes(), address, kem_cipher],
+    )?;
+    let value = writer.add_reserved(
+        SectionTagEnum::AeadCipher as u16,
+        payload.len() + ENCRYPTED_TAG_SZ,
+    )?;
+    let (data, tag_out) = value.split_at_mut(payload.len());
+    data.copy_from_slice(payload);
+    let aead = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key));
+    let Ok(tag) = aead.encrypt_in_place_detached(&Nonce::default(), b"", data) else {
+        return err(StatusCodeEnum::BadArgument);
+    };
+    tag_out.copy_from_slice(&tag);
+    Ok(writer.finish())
+}
+
+/// Finds the recipient block by (`alg`, `address`) and returns its KEM
+/// ciphertext. As with attestations, `AuthFailed` when the document names
+/// no such recipient -- absence answers "is this for me?".
+fn find_recipient_block<'a>(
+    reader: &EnvelopeReader<'a>,
+    alg: u16,
+    address: &AloecryptAddress,
+    kem_cipher_sz: usize,
+) -> AloecryptResult<&'a [u8]> {
+    for (tag, value) in reader.sections() {
+        if tag != SectionTagEnum::KemCipher as u16 {
+            continue;
+        }
+        if value.len() < KEM_VALUE_HEADER_SZ {
+            return err(StatusCodeEnum::BadEncoding);
+        }
+        if u16::from_le_bytes([value[0], value[1]]) != alg {
+            continue;
+        }
+        if value.len() != KEM_VALUE_HEADER_SZ + kem_cipher_sz {
+            return err(StatusCodeEnum::BadEncoding);
+        }
+        if value[2..KEM_VALUE_HEADER_SZ] != address[..] {
+            continue;
+        }
+        return Ok(&value[KEM_VALUE_HEADER_SZ..]);
+    }
+    err(StatusCodeEnum::AuthFailed)
+}
+
+/// Opens the sealed payload into `out`, returning its length.
+fn open_document(reader: &EnvelopeReader, key: &Hash256, out: &mut [u8]) -> AloecryptResult<usize> {
+    use chacha20poly1305::{
+        ChaCha20Poly1305, Nonce, Tag,
+        aead::{AeadInPlace, KeyInit},
+    };
+    let Some(value) = reader.find(SectionTagEnum::AeadCipher as u16) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    if value.len() < ENCRYPTED_TAG_SZ {
+        return err(StatusCodeEnum::BadEncoding);
+    }
+    let payload_len = value.len() - ENCRYPTED_TAG_SZ;
+    if out.len() < payload_len {
+        return err(StatusCodeEnum::BadArgument);
+    }
+    let (data, tag) = value.split_at(payload_len);
+    out[..payload_len].copy_from_slice(data);
+    let aead = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key));
+    if aead
+        .decrypt_in_place_detached(
+            &Nonce::default(),
+            b"",
+            &mut out[..payload_len],
+            Tag::from_slice(tag),
+        )
+        .is_err()
+    {
+        out[..payload_len].fill(0);
+        return err(StatusCodeEnum::AuthFailed);
+    }
+    Ok(payload_len)
+}
+
+pub fn encrypt_to_recipient_512(
+    recipient: &MlKem512Encapsulator,
+    prk: MlKemPrkSeed,
+    payload: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let result = recipient.encapsulate(prk);
+    let key = domain_hash(&result.secret, MLKEM_512_ENCRYPT_DOMAIN);
+    seal_document(
+        AloecryptAlgorithmEnum::MlKem512,
+        &recipient.address(),
+        &result.cipher,
+        &key,
+        payload,
+        out,
+    )
+}
+
+pub fn encrypt_to_recipient_768(
+    recipient: &MlKem768Encapsulator,
+    prk: MlKemPrkSeed,
+    payload: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let result = recipient.encapsulate(prk);
+    let key = domain_hash(&result.secret, MLKEM_768_ENCRYPT_DOMAIN);
+    seal_document(
+        AloecryptAlgorithmEnum::MlKem768,
+        &recipient.address(),
+        &result.cipher,
+        &key,
+        payload,
+        out,
+    )
+}
+
+pub fn encrypt_to_recipient_1024(
+    recipient: &MlKem1024Encapsulator,
+    prk: MlKemPrkSeed,
+    payload: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let result = recipient.encapsulate(prk);
+    let key = domain_hash(&result.secret, MLKEM_1024_ENCRYPT_DOMAIN);
+    seal_document(
+        AloecryptAlgorithmEnum::MlKem1024,
+        &recipient.address(),
+        &result.cipher,
+        &key,
+        payload,
+        out,
+    )
+}
+
+pub fn decrypt_as_recipient_512(
+    keypair: &MlKem512Keypair,
+    doc: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let reader = EnvelopeReader::new(doc)?;
+    if reader.has_unknown_critical(&[]) {
+        return err(StatusCodeEnum::Unsupported);
+    }
+    let kem_cipher = find_recipient_block(
+        &reader,
+        AloecryptAlgorithmEnum::MlKem512 as u16,
+        &keypair.get_encapsulator().address(),
+        MLKEM_512_CIPHER_SZ,
+    )?;
+    let Ok(kem_cipher) = <&MlKem512Cipher>::try_from(kem_cipher) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let secret = keypair.decapsulate(kem_cipher);
+    let key = domain_hash(&secret, MLKEM_512_ENCRYPT_DOMAIN);
+    open_document(&reader, &key, out)
+}
+
+pub fn decrypt_as_recipient_768(
+    keypair: &MlKem768Keypair,
+    doc: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let reader = EnvelopeReader::new(doc)?;
+    if reader.has_unknown_critical(&[]) {
+        return err(StatusCodeEnum::Unsupported);
+    }
+    let kem_cipher = find_recipient_block(
+        &reader,
+        AloecryptAlgorithmEnum::MlKem768 as u16,
+        &keypair.get_encapsulator().address(),
+        MLKEM_768_CIPHER_SZ,
+    )?;
+    let Ok(kem_cipher) = <&MlKem768Cipher>::try_from(kem_cipher) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let secret = keypair.decapsulate(kem_cipher);
+    let key = domain_hash(&secret, MLKEM_768_ENCRYPT_DOMAIN);
+    open_document(&reader, &key, out)
+}
+
+pub fn decrypt_as_recipient_1024(
+    keypair: &MlKem1024Keypair,
+    doc: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let reader = EnvelopeReader::new(doc)?;
+    if reader.has_unknown_critical(&[]) {
+        return err(StatusCodeEnum::Unsupported);
+    }
+    let kem_cipher = find_recipient_block(
+        &reader,
+        AloecryptAlgorithmEnum::MlKem1024 as u16,
+        &keypair.get_encapsulator().address(),
+        MLKEM_1024_CIPHER_SZ,
+    )?;
+    let Ok(kem_cipher) = <&MlKem1024Cipher>::try_from(kem_cipher) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let secret = keypair.decapsulate(kem_cipher);
+    let key = domain_hash(&secret, MLKEM_1024_ENCRYPT_DOMAIN);
+    open_document(&reader, &key, out)
 }
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
