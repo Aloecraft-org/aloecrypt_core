@@ -1,0 +1,411 @@
+// src/document.rs
+// License: Apache-2.0 (disclaimer at bottom of file)
+//
+// The document layer's transport: the extensible binary envelope and the
+// armored text encoding (doc/DESIGN.md sections 3 and 18). Everything here
+// works over caller-provided buffers -- no allocator, no assumption about
+// where the bytes came from -- and every parse failure is a `StatusCode`.
+//
+// None of these functions are schema exports yet: encoding into a caller
+// buffer is an out-parameter, which has no representation in a wire format
+// that returns bytes (the `read_u16_arr` precedent, DESIGN section 14). The
+// wire surface arrives with the first fixed-size document type; the
+// `document_api` namespace already carries the tag vocabulary and layout
+// constants so the other generators stay in step.
+
+use super::document_api::*;
+
+use crate::error::{AloecryptResult, StatusCodeEnum};
+use data_encoding::BASE64;
+
+fn err<T>(code: StatusCodeEnum) -> AloecryptResult<T> {
+    Err(code.into())
+}
+
+// ------------------------------------------------------------------ envelope
+//
+// Layout, all integers little-endian:
+//
+//   [0..4)  magic  "ALOE"
+//   [4..6)  format version, u16 -- currently 1
+//   [6.. )  sections: (tag u16, length u32, value) repeated to the end
+//
+// A reader skips sections whose tag it does not recognize -- that is what
+// keeps the format additive -- unless the tag has the top bit set, which
+// marks it must-understand: `has_unknown_critical` reports those and the
+// consumer refuses the document. Tags 0 and 0xFFFF are reserved and never
+// valid on the wire in either direction.
+
+pub const DOC_MAGIC: [u8; DOC_MAGIC_SZ] = *b"ALOE";
+pub const DOC_VERSION: u16 = 1;
+pub const SECTION_TAG_CRITICAL: u16 = 0x8000;
+
+pub const fn section_tag_is_critical(tag: u16) -> bool {
+    tag & SECTION_TAG_CRITICAL != 0
+}
+
+/// Bytes an envelope with sections of the given value lengths occupies.
+pub fn envelope_size(section_lens: &[usize]) -> usize {
+    let mut total = DOC_HEADER_SZ;
+    let mut i = 0;
+    while i < section_lens.len() {
+        total += DOC_SECTION_HEADER_SZ + section_lens[i];
+        i += 1;
+    }
+    total
+}
+
+pub struct EnvelopeWriter<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl<'a> EnvelopeWriter<'a> {
+    /// Starts an envelope in `buf`. `BadArgument` if the buffer cannot hold
+    /// even the header.
+    pub fn new(buf: &'a mut [u8]) -> AloecryptResult<Self> {
+        if buf.len() < DOC_HEADER_SZ {
+            return err(StatusCodeEnum::BadArgument);
+        }
+        buf[..DOC_MAGIC_SZ].copy_from_slice(&DOC_MAGIC);
+        buf[DOC_MAGIC_SZ..DOC_HEADER_SZ].copy_from_slice(&DOC_VERSION.to_le_bytes());
+        Ok(Self {
+            buf,
+            pos: DOC_HEADER_SZ,
+        })
+    }
+
+    /// Appends one section. `BadArgument` for a reserved tag, a value that
+    /// cannot be length-prefixed, or a buffer without room; on error the
+    /// envelope is unchanged and remains valid.
+    pub fn add(&mut self, tag: u16, value: &[u8]) -> AloecryptResult<()> {
+        if tag == 0 || tag == u16::MAX {
+            return err(StatusCodeEnum::BadArgument);
+        }
+        if u32::try_from(value.len()).is_err() {
+            return err(StatusCodeEnum::BadArgument);
+        }
+        let end = self
+            .pos
+            .checked_add(DOC_SECTION_HEADER_SZ)
+            .and_then(|p| p.checked_add(value.len()));
+        let Some(end) = end else {
+            return err(StatusCodeEnum::BadArgument);
+        };
+        if end > self.buf.len() {
+            return err(StatusCodeEnum::BadArgument);
+        }
+        self.buf[self.pos..self.pos + 2].copy_from_slice(&tag.to_le_bytes());
+        self.buf[self.pos + 2..self.pos + 6].copy_from_slice(&(value.len() as u32).to_le_bytes());
+        self.buf[self.pos + 6..end].copy_from_slice(value);
+        self.pos = end;
+        Ok(())
+    }
+
+    /// Ends the envelope, returning how many bytes of the buffer it holds.
+    pub fn finish(self) -> usize {
+        self.pos
+    }
+}
+
+pub struct EnvelopeReader<'a> {
+    sections: &'a [u8],
+    version: u16,
+}
+
+impl<'a> EnvelopeReader<'a> {
+    /// Parses and fully validates an envelope: magic, version, and the
+    /// structure of every section, so iteration afterwards cannot fail.
+    /// `BadEncoding` for anything malformed; `Unsupported` for a version this
+    /// build does not read (the version only moves when the layout itself
+    /// changes -- new section tags do not bump it).
+    pub fn new(doc: &'a [u8]) -> AloecryptResult<Self> {
+        if doc.len() < DOC_HEADER_SZ || doc[..DOC_MAGIC_SZ] != DOC_MAGIC {
+            return err(StatusCodeEnum::BadEncoding);
+        }
+        let version = u16::from_le_bytes([doc[DOC_MAGIC_SZ], doc[DOC_MAGIC_SZ + 1]]);
+        if version != DOC_VERSION {
+            return err(StatusCodeEnum::Unsupported);
+        }
+        let sections = &doc[DOC_HEADER_SZ..];
+        let mut pos = 0usize;
+        while pos < sections.len() {
+            let Some(header_end) = pos.checked_add(DOC_SECTION_HEADER_SZ) else {
+                return err(StatusCodeEnum::BadEncoding);
+            };
+            if header_end > sections.len() {
+                return err(StatusCodeEnum::BadEncoding);
+            }
+            let tag = u16::from_le_bytes([sections[pos], sections[pos + 1]]);
+            if tag == 0 || tag == u16::MAX {
+                return err(StatusCodeEnum::BadEncoding);
+            }
+            let len = u32::from_le_bytes([
+                sections[pos + 2],
+                sections[pos + 3],
+                sections[pos + 4],
+                sections[pos + 5],
+            ]);
+            // On a 32-bit target a u32 length can exceed what a slice can
+            // address; checked arithmetic turns that into BadEncoding rather
+            // than a wrap.
+            let Ok(len) = usize::try_from(len) else {
+                return err(StatusCodeEnum::BadEncoding);
+            };
+            let Some(value_end) = header_end.checked_add(len) else {
+                return err(StatusCodeEnum::BadEncoding);
+            };
+            if value_end > sections.len() {
+                return err(StatusCodeEnum::BadEncoding);
+            }
+            pos = value_end;
+        }
+        Ok(Self { sections, version })
+    }
+
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+
+    /// Every section in document order, unknown tags included.
+    pub fn sections(&self) -> Sections<'a> {
+        Sections {
+            rest: self.sections,
+        }
+    }
+
+    /// The value of the first section carrying `tag`, if any.
+    pub fn find(&self, tag: u16) -> Option<&'a [u8]> {
+        self.sections().find(|(t, _)| *t == tag).map(|(_, v)| v)
+    }
+
+    /// True if any section carries a must-understand tag that is not in
+    /// `known`. A consumer that gets `true` refuses the document as
+    /// `Unsupported` -- skipping a critical section it cannot interpret is
+    /// exactly what the critical bit exists to prevent.
+    pub fn has_unknown_critical(&self, known: &[u16]) -> bool {
+        self.sections()
+            .any(|(tag, _)| section_tag_is_critical(tag) && !known.contains(&tag))
+    }
+}
+
+pub struct Sections<'a> {
+    rest: &'a [u8],
+}
+
+impl<'a> Iterator for Sections<'a> {
+    type Item = (u16, &'a [u8]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // The reader validated the structure, so a well-formed remainder is
+        // an invariant here, not a condition to report.
+        if self.rest.is_empty() {
+            return None;
+        }
+        let tag = u16::from_le_bytes([self.rest[0], self.rest[1]]);
+        let len =
+            u32::from_le_bytes([self.rest[2], self.rest[3], self.rest[4], self.rest[5]]) as usize;
+        let value = &self.rest[DOC_SECTION_HEADER_SZ..DOC_SECTION_HEADER_SZ + len];
+        self.rest = &self.rest[DOC_SECTION_HEADER_SZ + len..];
+        Some((tag, value))
+    }
+}
+
+// -------------------------------------------------------------------- armor
+//
+// RFC 7468-shaped: `-----BEGIN ALOECRYPT {LABEL}-----`, base64 (standard
+// alphabet, 64 characters per line), `-----END ALOECRYPT {LABEL}-----`. The
+// crate brands every delimiter; the label parameter is only the document
+// type. Leniency on decode is deliberate and small: anything before BEGIN
+// and after END is ignored (documents travel inside email and logs), CRLF
+// and LF both work, and any line width decodes -- but within the body only
+// base64 bytes are accepted, padding is canonical-and-final, and the
+// delimiter lines must match exactly.
+
+const BEGIN_PREFIX: &[u8] = b"-----BEGIN ALOECRYPT ";
+const END_PREFIX: &[u8] = b"-----END ALOECRYPT ";
+const DELIM_SUFFIX: &[u8] = b"-----";
+/// Bytes of payload per armored line: 48 bytes encode to 64 characters.
+const ARMOR_LINE_BYTES: usize = 48;
+
+/// A label is 1..=DOC_LABEL_MAX_SZ characters of A-Z, 0-9 and interior
+/// spaces -- the uppercase RFC 7468 style the delimiters already use.
+fn label_is_valid(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= DOC_LABEL_MAX_SZ
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b' ')
+        && bytes[0] != b' '
+        && bytes[bytes.len() - 1] != b' '
+}
+
+/// Exact size of the armored form of `payload_len` bytes under a
+/// `label_len`-byte label, newlines included.
+pub const fn armored_size(label_len: usize, payload_len: usize) -> usize {
+    let full_lines = payload_len / ARMOR_LINE_BYTES;
+    let rem = payload_len % ARMOR_LINE_BYTES;
+    let mut body = full_lines * 65; // 64 characters + newline
+    if rem > 0 {
+        body += rem.div_ceil(3) * 4 + 1;
+    }
+    // BEGIN line + body + END line, one newline each.
+    (BEGIN_PREFIX.len() + label_len + DELIM_SUFFIX.len() + 1)
+        + body
+        + (END_PREFIX.len() + label_len + DELIM_SUFFIX.len() + 1)
+}
+
+/// Upper bound on the payload a `text_len`-byte armored document can carry.
+/// For buffer sizing only -- the true length comes back from `dearmor`.
+pub const fn dearmored_size_bound(text_len: usize) -> usize {
+    (text_len / 4) * 3
+}
+
+struct Cursor<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl Cursor<'_> {
+    fn put(&mut self, bytes: &[u8]) {
+        self.buf[self.pos..self.pos + bytes.len()].copy_from_slice(bytes);
+        self.pos += bytes.len();
+    }
+}
+
+/// Armors `payload` under `label` into `out`, returning the text length.
+/// `BadArgument` for an invalid label or a buffer smaller than
+/// `armored_size` says this call needs.
+pub fn armor(label: &str, payload: &[u8], out: &mut [u8]) -> AloecryptResult<usize> {
+    if !label_is_valid(label) {
+        return err(StatusCodeEnum::BadArgument);
+    }
+    if out.len() < armored_size(label.len(), payload.len()) {
+        return err(StatusCodeEnum::BadArgument);
+    }
+    let mut cur = Cursor { buf: out, pos: 0 };
+
+    cur.put(BEGIN_PREFIX);
+    cur.put(label.as_bytes());
+    cur.put(DELIM_SUFFIX);
+    cur.put(b"\n");
+
+    let mut line = [0u8; 64];
+    for chunk in payload.chunks(ARMOR_LINE_BYTES) {
+        let encoded = BASE64.encode_len(chunk.len());
+        BASE64.encode_mut(chunk, &mut line[..encoded]);
+        cur.put(&line[..encoded]);
+        cur.put(b"\n");
+    }
+
+    cur.put(END_PREFIX);
+    cur.put(label.as_bytes());
+    cur.put(DELIM_SUFFIX);
+    cur.put(b"\n");
+    Ok(cur.pos)
+}
+
+/// A delimiter line for `label`, assembled into a fixed buffer so it can be
+/// compared against input lines without allocating.
+struct DelimLine {
+    buf: [u8; 64],
+    len: usize,
+}
+
+impl DelimLine {
+    fn new(prefix: &[u8], label: &str) -> Self {
+        let mut buf = [0u8; 64];
+        let mut pos = 0;
+        for part in [prefix, label.as_bytes(), DELIM_SUFFIX] {
+            buf[pos..pos + part.len()].copy_from_slice(part);
+            pos += part.len();
+        }
+        Self { buf, len: pos }
+    }
+
+    fn matches(&self, line: &[u8]) -> bool {
+        line == &self.buf[..self.len]
+    }
+}
+
+/// Removes the armor from `text`, writing the payload into `out` and
+/// returning its length. The label must match the delimiters exactly --
+/// callers state what they expect rather than trusting the input to say
+/// what it is. `BadEncoding` for anything that does not parse as armor;
+/// `BadArgument` for an invalid label or an `out` that cannot hold the
+/// payload (`dearmored_size_bound` sizes it).
+pub fn dearmor(text: &[u8], label: &str, out: &mut [u8]) -> AloecryptResult<usize> {
+    if !label_is_valid(label) {
+        return err(StatusCodeEnum::BadArgument);
+    }
+    let begin = DelimLine::new(BEGIN_PREFIX, label);
+    let end = DelimLine::new(END_PREFIX, label);
+
+    let mut lines = text.split(|b| *b == b'\n').map(|line| {
+        // Accept CRLF transport without accepting stray carriage returns
+        // anywhere else.
+        line.strip_suffix(b"\r").unwrap_or(line)
+    });
+
+    // Anything before BEGIN is transport preamble: skipped, never parsed.
+    if !lines.any(|line| begin.matches(line)) {
+        return err(StatusCodeEnum::BadEncoding);
+    }
+
+    let mut quad = [0u8; 4];
+    let mut quad_len = 0usize;
+    let mut decoded = [0u8; 3];
+    let mut written = 0usize;
+    let mut padded = false;
+    for line in lines {
+        if end.matches(line) {
+            if quad_len != 0 {
+                // A dangling partial group means the base64 was truncated.
+                return err(StatusCodeEnum::BadEncoding);
+            }
+            return Ok(written);
+        }
+        for &b in line {
+            // Base64 groups are self-delimiting, so any wrapping width
+            // decodes identically; after canonical padding the body is over
+            // and anything further is not armor.
+            if padded {
+                return err(StatusCodeEnum::BadEncoding);
+            }
+            quad[quad_len] = b;
+            quad_len += 1;
+            if quad_len < 4 {
+                continue;
+            }
+            quad_len = 0;
+            let Ok(n) = BASE64.decode_mut(&quad, &mut decoded) else {
+                return err(StatusCodeEnum::BadEncoding);
+            };
+            if n < 3 {
+                padded = true;
+            }
+            if written + n > out.len() {
+                return err(StatusCodeEnum::BadArgument);
+            }
+            out[written..written + n].copy_from_slice(&decoded[..n]);
+            written += n;
+        }
+    }
+    // The input ran out before the END delimiter: truncated document.
+    err(StatusCodeEnum::BadEncoding)
+}
+
+// Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
+//
+// Licensed under the Apache License, Version 2.0 (the License);
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.

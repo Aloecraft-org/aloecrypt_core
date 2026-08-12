@@ -13,6 +13,7 @@ include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 // pub mod address;
 // pub mod claim;
 pub mod bip39;
+pub mod document;
 pub mod dsa;
 pub mod error;
 pub mod fixed_byte;

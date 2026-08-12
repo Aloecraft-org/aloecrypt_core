@@ -226,6 +226,32 @@
             }
         ]
     },
+    "document_api": {
+        "sz_consts": [
+            {"name": "DOC_MAGIC_SZ",          "description": "Size in bytes of the envelope magic that opens every binary aloecrypt document."},
+            {"name": "DOC_HEADER_SZ",         "description": "Size in bytes of the fixed envelope header: the 4-byte magic followed by a little-endian u16 format version."},
+            {"name": "DOC_SECTION_HEADER_SZ", "description": "Size in bytes of a section header: a little-endian u16 tag followed by a little-endian u32 payload length."},
+            {"name": "DOC_LABEL_MAX_SZ",      "description": "Maximum length in bytes of the document-type label that follows ALOECRYPT in an armor delimiter line."}
+        ],
+        "enums": [
+            {
+                "name": "SectionTag",
+                "description": "Identifies what a section of a document envelope carries. Readers skip sections whose tag they do not recognize, which is what keeps the envelope extensible; tags with the top bit set (0x8000 and above) are must-understand, and a reader that meets an unrecognized one refuses the document instead.",
+                "members": [
+                    {"name" : "NoValue",       "description": "Reserved. Never written to a document; decoding an unknown tag value yields this default."},
+                    {"name" : "Payload",       "description": "The document body: the canonical bytes the enclosing document signs, seals, or transports."},
+                    {"name" : "Signature",     "description": "An ML-DSA signature over the canonical signing bytes of the document."},
+                    {"name" : "SignerAddress", "description": "The 32-byte aloecrypt address of the key that produced the Signature section."},
+                    {"name" : "KemCipher",     "description": "An ML-KEM ciphertext that encapsulates the content-encryption key for one recipient."},
+                    {"name" : "AeadNonce",     "description": "The nonce for the AEAD that sealed the AeadCipher section. Unique per key; never reused."},
+                    {"name" : "AeadCipher",    "description": "AEAD-sealed bytes, including the authentication tag. Confidential payloads travel here instead of Payload."},
+                    {"name" : "KdfSalt",       "description": "The salt a password-based derivation used. Stored so the key can be re-derived to open the document."},
+                    {"name" : "KdfParams",     "description": "The password-derivation parameters (profile memory cost and pass count) the KdfSalt was used with, so a document is openable even when the deriving profile differs from the reading one."},
+                    {"name" : "Invalid",       "description": "Reserved sentinel at the top of the tag space. Never written; sits in the must-understand range by construction."}
+                ]
+            }
+        ]
+    },
     "dsa_api": {
         "sz_consts": [
             {"name": "MLDSA_SEED_SZ",          "description": "Size in bytes of the private seed used to deterministically derive an ML-DSA keypair."},

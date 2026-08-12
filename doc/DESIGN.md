@@ -304,7 +304,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-90 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+117 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 
@@ -329,6 +329,8 @@ External ground truth, rather than self-consistency, where it exists:
 - **The password KDF** pinned per profile against `phc-winner-argon2`, the
   Argon2 reference implementation (via argon2-cffi), including the salt
   normalization — the full composition, not just the argon2 crate's own KATs.
+- **The armor** byte-compared against Python-generated fixtures at two line
+  widths, and the envelope layout asserted byte-for-byte (section 18).
 
 One ergonomic note worth knowing before writing more tests: generated structs
 are `#[repr(C, packed)]`, so a field cannot be referenced directly.
@@ -580,6 +582,70 @@ interface, with the details that surfaced in the doing.
   "worth doing before anything is persisted" breaks, and the reason it
   shipped ahead of the document layer.
 
+## 18. The document envelope and armor
+
+The transport half of section 3 is built: `src/document.rs`, over
+caller-provided buffers throughout, with the details that surfaced in the
+doing.
+
+**The envelope** is `"ALOE"`, a little-endian u16 format version (1), then
+sections of (u16 tag, u32 length, value), all little-endian, to the end of
+the buffer. Decisions the layout fixes:
+
+- **The version moves only when this layout changes.** New section tags do
+  not bump it — additivity is the sections' job. A reader refuses a version
+  it does not know (`Unsupported`), and validates the whole structure up
+  front so iteration afterwards is infallible and zero-copy.
+- **Skip-on-unknown got the missing refinement: a must-understand bit.**
+  Tags with the top bit set (`0x8000..`) are critical; `has_unknown_critical`
+  reports them and a consumer refuses such a document rather than skipping a
+  section that was load-bearing. Plain skip-on-unknown alone repeats X.509's
+  lesson in reverse — an old reader silently ignoring a new security-relevant
+  section. Tags 0 and 0xFFFF are reserved in both directions.
+- **The initial tag vocabulary lives in the schema** (`document_api`,
+  `SectionTag`), so every generator carries it: Payload, Signature,
+  SignerAddress, KemCipher, AeadNonce, AeadCipher, KdfSalt, KdfParams — the
+  last recording the derivation parameters section 17 requires a
+  password-sealed document to carry. Duplicate tags are legal and ordered
+  (several KemCipher sections is how multi-recipient works); `find` means
+  "first".
+
+**The armor** is RFC 7468-shaped: `-----BEGIN ALOECRYPT {LABEL}-----`,
+standard-alphabet base64 at 64 columns, matching END line. The crate brands
+every delimiter; callers supply only the type label (A–Z, 0–9, interior
+spaces, 32 bytes max). Parsing is lenient exactly where transport demands
+and strict everywhere else:
+
+- Anything before BEGIN and after END is ignored (email preamble, sig
+  blocks, other documents); CRLF and LF both parse; any line width decodes,
+  since base64 groups are self-delimiting — a decoder that only reads its
+  own wrapping is not a decoder of the format.
+- Within the body: alphabet bytes only, canonical padding (non-canonical
+  trailing bits are `BadEncoding`, not a second spelling of the same
+  payload), padding ends the stream, a dangling partial group is truncation,
+  and a missing END is truncation. Delimiter lines must match exactly.
+- **The caller states the label it expects.** `dearmor(text, label, out)`
+  finds *that* document; there is no "parse whatever this is" entrypoint, so
+  a signer document cannot be smuggled somewhere an envelope was expected.
+  The CLI, which legitimately wants "what is this?", can try its known
+  labels.
+
+**Both are pinned against an independent implementation**: the armored form
+of a reference payload is byte-compared against Python-generated fixtures
+(64- and 76-column), and the envelope layout is asserted byte-for-byte, so
+a change to either wire format is a deliberate act.
+
+**None of this is a wire export yet.** Encoding into a caller buffer is an
+out-parameter, which the plugin wire cannot express (the `read_u16_arr`
+precedent, section 14) — the export surface arrives with the first
+fixed-size document type. Two small consequences noted for then: the schema
+has no way to declare a *valued* byte constant, so `DOC_MAGIC` and
+`DOC_VERSION` are hand-written Rust consts the other generators will need
+from the merged schema eventually; and the remaining half of section 3 —
+the canonical-signing-bytes guarantee, `AloecryptSignable`, detached
+signatures and encrypt-to-recipient — builds on this transport and comes
+next.
+
 ## Next
 
 In rough order of value, and roughly independent of each other:
@@ -591,10 +657,11 @@ In rough order of value, and roughly independent of each other:
    status contract.
 3. ~~Remove `Copy` from key structs~~ — **done**, section 15. The zeroize
    wipe itself is still open and belongs to the identity layer's type split.
-4. **The document layer** (section 3). Armour, extensible envelope, canonical
-   signing bytes, `AloecryptSignable`. This is the phase that makes certs, CSRs
-   and revocations one problem instead of four, and nothing after it can start
-   until it exists.
+4. **The document layer** (section 3) — transport half **done**, section 18:
+   the extensible envelope and the armor, both pinned against independent
+   implementations. Remaining: the canonical-signing-bytes guarantee,
+   `AloecryptSignable`, detached signatures and encrypt-to-recipient — the
+   parts that make certs, CSRs and revocations one problem instead of four.
 5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (925 checks
    now, grown with the status contract): every `impls` pair resolving, every
    referenced type existing, enum discriminants unique and defaults present,

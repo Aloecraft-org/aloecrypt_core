@@ -618,6 +618,76 @@
       }
     ]
   },
+  "document_api": {
+    "sz_consts": [
+      {
+        "name": "DOC_MAGIC_SZ",
+        "value": "4"
+      },
+      {
+        "name": "DOC_HEADER_SZ",
+        "value": "6"
+      },
+      {
+        "name": "DOC_SECTION_HEADER_SZ",
+        "value": "6"
+      },
+      {
+        "name": "DOC_LABEL_MAX_SZ",
+        "value": "32"
+      }
+    ],
+    "enums": [
+      {
+        "name": "SectionTag",
+        "derives": "Debug, Clone, Copy, PartialEq, Eq, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "repr_type": "u16",
+        "members": [
+          {
+            "name": "NoValue",
+            "discriminant": "0",
+            "default": "true"
+          },
+          {
+            "name": "Payload",
+            "discriminant": "10"
+          },
+          {
+            "name": "Signature",
+            "discriminant": "20"
+          },
+          {
+            "name": "SignerAddress",
+            "discriminant": "21"
+          },
+          {
+            "name": "KemCipher",
+            "discriminant": "30"
+          },
+          {
+            "name": "AeadNonce",
+            "discriminant": "31"
+          },
+          {
+            "name": "AeadCipher",
+            "discriminant": "32"
+          },
+          {
+            "name": "KdfSalt",
+            "discriminant": "40"
+          },
+          {
+            "name": "KdfParams",
+            "discriminant": "41"
+          },
+          {
+            "name": "Invalid",
+            "discriminant": "65535"
+          }
+        ]
+      }
+    ]
+  },
   "dsa_api": {
     "enums": [],
     "sz_consts": [
