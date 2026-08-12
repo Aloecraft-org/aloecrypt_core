@@ -12,6 +12,20 @@
                     {"name": "Unsupported", "description": "The requested algorithm or variant is not available in this build."},
                     {"name": "Unspecified", "description": "An error with no more specific code. Also what an unrecognized status decodes to, so an unknown code can never read as success."}
                 ]
+            },
+            {
+                "name": "AloecryptAlgorithm",
+                "description": "Names an algorithm and parameter set wherever a document or wire structure must say which one it used -- a signature section, a KEM ciphertext, an address derivation. Values are wire-stable: never renumber.",
+                "members": [
+                    {"name": "NoValue",   "description": "Reserved default. Never valid on the wire; decoding an unknown value yields this."},
+                    {"name": "MlDsa44",   "description": "ML-DSA-44 (FIPS 204), NIST security category 2."},
+                    {"name": "MlDsa65",   "description": "ML-DSA-65 (FIPS 204), NIST security category 3."},
+                    {"name": "MlDsa87",   "description": "ML-DSA-87 (FIPS 204), NIST security category 5."},
+                    {"name": "MlKem512",  "description": "ML-KEM-512 (FIPS 203), NIST security category 1."},
+                    {"name": "MlKem768",  "description": "ML-KEM-768 (FIPS 203), NIST security category 3."},
+                    {"name": "MlKem1024", "description": "ML-KEM-1024 (FIPS 203), NIST security category 5."},
+                    {"name": "Invalid",   "description": "Reserved sentinel at the top of the space. Never written."}
+                ]
             }
         ],
         "sz_consts": [
@@ -416,7 +430,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-44 signature is valid for the given message under this public key. Returns true if the signature is authentic and unmodified, false otherwise. Does not throw or panic on invalid signatures.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_44_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-44-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {
@@ -426,7 +441,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-65 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_65_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-65-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {
@@ -436,7 +452,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-87 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_87_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-87-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {

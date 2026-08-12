@@ -32,6 +32,46 @@
             "default": "true"
           }
         ]
+      },
+      {
+        "name": "AloecryptAlgorithm",
+        "derives": "Debug, Clone, Copy, PartialEq, Eq, zerocopy::IntoBytes, zerocopy::FromBytes, zerocopy::KnownLayout, zerocopy::Immutable",
+        "repr_type": "u16",
+        "members": [
+          {
+            "name": "NoValue",
+            "discriminant": "0",
+            "default": "true"
+          },
+          {
+            "name": "MlDsa44",
+            "discriminant": "10"
+          },
+          {
+            "name": "MlDsa65",
+            "discriminant": "11"
+          },
+          {
+            "name": "MlDsa87",
+            "discriminant": "12"
+          },
+          {
+            "name": "MlKem512",
+            "discriminant": "20"
+          },
+          {
+            "name": "MlKem768",
+            "discriminant": "21"
+          },
+          {
+            "name": "MlKem1024",
+            "discriminant": "22"
+          },
+          {
+            "name": "Invalid",
+            "discriminant": "65535"
+          }
+        ]
       }
     ],
     "sz_consts": [
@@ -1093,6 +1133,12 @@
                 "type": "&MlDsa44Signature"
               }
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ],
         "unimplemented_functions": [
@@ -1123,6 +1169,12 @@
               "// fn verify_with_context(&self, msg: &[u8], ctx: &[u8], signature: &MlDsa44Signature) -> bool;",
               "// fn verify_mu(&self, mu: &MlDsaMu, signature: &MlDsa44Signature) -> bool;"
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ]
       },
@@ -1143,6 +1195,12 @@
                 "type": "&MlDsa87Signature"
               }
             ]
+          },
+          {
+            "name": "address",
+            "instance": "&self",
+            "return": "AloecryptAddress",
+            "params": []
           }
         ],
         "unimplemented_functions": [

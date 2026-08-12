@@ -15,7 +15,11 @@
 
 use super::document_api::*;
 
+use crate::aloecrypt_api::{ALOECRYPT_ADDRESS_SZ, AloecryptAddress, AloecryptAlgorithmEnum};
+use crate::dsa_api::*;
 use crate::error::{AloecryptResult, StatusCodeEnum};
+use crate::hash::domain_hash;
+use crate::hash_api::Hash256;
 use data_encoding::BASE64;
 
 fn err<T>(code: StatusCodeEnum) -> AloecryptResult<T> {
@@ -79,16 +83,29 @@ impl<'a> EnvelopeWriter<'a> {
     /// cannot be length-prefixed, or a buffer without room; on error the
     /// envelope is unchanged and remains valid.
     pub fn add(&mut self, tag: u16, value: &[u8]) -> AloecryptResult<()> {
+        self.add_parts(tag, &[value])
+    }
+
+    /// `add`, with the section value assembled from `parts` in order --
+    /// so a composite value never needs an intermediate buffer.
+    pub fn add_parts(&mut self, tag: u16, parts: &[&[u8]]) -> AloecryptResult<()> {
         if tag == 0 || tag == u16::MAX {
             return err(StatusCodeEnum::BadArgument);
         }
-        if u32::try_from(value.len()).is_err() {
+        let mut value_len = 0usize;
+        for part in parts {
+            let Some(total) = value_len.checked_add(part.len()) else {
+                return err(StatusCodeEnum::BadArgument);
+            };
+            value_len = total;
+        }
+        if u32::try_from(value_len).is_err() {
             return err(StatusCodeEnum::BadArgument);
         }
         let end = self
             .pos
             .checked_add(DOC_SECTION_HEADER_SZ)
-            .and_then(|p| p.checked_add(value.len()));
+            .and_then(|p| p.checked_add(value_len));
         let Some(end) = end else {
             return err(StatusCodeEnum::BadArgument);
         };
@@ -96,8 +113,12 @@ impl<'a> EnvelopeWriter<'a> {
             return err(StatusCodeEnum::BadArgument);
         }
         self.buf[self.pos..self.pos + 2].copy_from_slice(&tag.to_le_bytes());
-        self.buf[self.pos + 2..self.pos + 6].copy_from_slice(&(value.len() as u32).to_le_bytes());
-        self.buf[self.pos + 6..end].copy_from_slice(value);
+        self.buf[self.pos + 2..self.pos + 6].copy_from_slice(&(value_len as u32).to_le_bytes());
+        let mut pos = self.pos + DOC_SECTION_HEADER_SZ;
+        for part in parts {
+            self.buf[pos..pos + part.len()].copy_from_slice(part);
+            pos += part.len();
+        }
         self.pos = end;
         Ok(())
     }
@@ -394,6 +415,198 @@ pub fn dearmor(text: &[u8], label: &str, out: &mut [u8]) -> AloecryptResult<usiz
     }
     // The input ran out before the END delimiter: truncated document.
     err(StatusCodeEnum::BadEncoding)
+}
+
+// ------------------------------------------------------ detached signatures
+//
+// A detached signature is an envelope (label SIGNATURE when armored) whose
+// attestations are Signature sections, each self-contained:
+//
+//   alg u16 LE | signer address (32 bytes) | signature bytes
+//
+// One section is one complete attestation, so several signers -- of the same
+// or different parameter sets -- are just several sections, and nothing
+// pairs by position. What is signed is not the raw message but its
+// domain-separated hash (`aloecrypt.detached.v1`): a detached signature can
+// then never be replayed as some other protocol's signature over the same
+// bytes, the ML-DSA call never sees an unbounded message on a bounded
+// stack, and the domain string versions the construction.
+
+pub const SIGNATURE_LABEL: &str = "SIGNATURE";
+const DETACHED_SIG_DOMAIN: &str = "aloecrypt.detached.v1";
+/// Algorithm id + signer address, ahead of the signature bytes.
+const SIG_VALUE_HEADER_SZ: usize = 2 + ALOECRYPT_ADDRESS_SZ;
+
+/// Bytes a single-signer detached signature document occupies, given the
+/// algorithm's signature size (`MLDSA_44_SIGNATURE_SZ` and friends).
+pub const fn detached_signature_size(signature_sz: usize) -> usize {
+    DOC_HEADER_SZ + DOC_SECTION_HEADER_SZ + SIG_VALUE_HEADER_SZ + signature_sz
+}
+
+fn detached_signing_material(message: &[u8]) -> Hash256 {
+    domain_hash(message, DETACHED_SIG_DOMAIN)
+}
+
+fn build_detached(
+    alg: AloecryptAlgorithmEnum,
+    address: &AloecryptAddress,
+    signature: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let mut writer = EnvelopeWriter::new(out)?;
+    writer.add_parts(
+        SectionTagEnum::Signature as u16,
+        &[&(alg as u16).to_le_bytes(), address, signature],
+    )?;
+    Ok(writer.finish())
+}
+
+/// Finds the attestation by (`alg`, `address`) and returns its signature
+/// bytes. `AuthFailed` when the document carries no attestation by that key
+/// -- absence answers the caller's question ("did this key sign this?")
+/// rather than describing the document.
+fn find_attestation<'a>(
+    doc: &'a [u8],
+    alg: u16,
+    address: &AloecryptAddress,
+    signature_sz: usize,
+) -> AloecryptResult<&'a [u8]> {
+    let reader = EnvelopeReader::new(doc)?;
+    // No critical tags exist yet, so any critical section is from a future
+    // this build cannot judge -- refuse rather than half-verify.
+    if reader.has_unknown_critical(&[]) {
+        return err(StatusCodeEnum::Unsupported);
+    }
+    for (tag, value) in reader.sections() {
+        if tag != SectionTagEnum::Signature as u16 {
+            continue;
+        }
+        if value.len() < SIG_VALUE_HEADER_SZ {
+            return err(StatusCodeEnum::BadEncoding);
+        }
+        if u16::from_le_bytes([value[0], value[1]]) != alg {
+            continue;
+        }
+        if value.len() != SIG_VALUE_HEADER_SZ + signature_sz {
+            return err(StatusCodeEnum::BadEncoding);
+        }
+        if value[2..SIG_VALUE_HEADER_SZ] != address[..] {
+            continue;
+        }
+        return Ok(&value[SIG_VALUE_HEADER_SZ..]);
+    }
+    err(StatusCodeEnum::AuthFailed)
+}
+
+pub fn sign_detached_44(
+    keypair: &MlDsa44Keypair,
+    message: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let material = detached_signing_material(message);
+    let signature = keypair.sign(&material);
+    build_detached(
+        AloecryptAlgorithmEnum::MlDsa44,
+        &keypair.address(),
+        &signature,
+        out,
+    )
+}
+
+pub fn sign_detached_65(
+    keypair: &MlDsa65Keypair,
+    message: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let material = detached_signing_material(message);
+    let signature = keypair.sign(&material);
+    build_detached(
+        AloecryptAlgorithmEnum::MlDsa65,
+        &keypair.address(),
+        &signature,
+        out,
+    )
+}
+
+pub fn sign_detached_87(
+    keypair: &MlDsa87Keypair,
+    message: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let material = detached_signing_material(message);
+    let signature = keypair.sign(&material);
+    build_detached(
+        AloecryptAlgorithmEnum::MlDsa87,
+        &keypair.address(),
+        &signature,
+        out,
+    )
+}
+
+pub fn verify_detached_44(
+    verifier: &MlDsa44Verifier,
+    message: &[u8],
+    doc: &[u8],
+) -> AloecryptResult<()> {
+    let bytes = find_attestation(
+        doc,
+        AloecryptAlgorithmEnum::MlDsa44 as u16,
+        &verifier.address(),
+        MLDSA_44_SIGNATURE_SZ,
+    )?;
+    let Ok(signature) = <&MlDsa44Signature>::try_from(bytes) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let material = detached_signing_material(message);
+    if verifier.verify(&material, signature) {
+        Ok(())
+    } else {
+        err(StatusCodeEnum::AuthFailed)
+    }
+}
+
+pub fn verify_detached_65(
+    verifier: &MlDsa65Verifier,
+    message: &[u8],
+    doc: &[u8],
+) -> AloecryptResult<()> {
+    let bytes = find_attestation(
+        doc,
+        AloecryptAlgorithmEnum::MlDsa65 as u16,
+        &verifier.address(),
+        MLDSA_65_SIGNATURE_SZ,
+    )?;
+    let Ok(signature) = <&MlDsa65Signature>::try_from(bytes) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let material = detached_signing_material(message);
+    if verifier.verify(&material, signature) {
+        Ok(())
+    } else {
+        err(StatusCodeEnum::AuthFailed)
+    }
+}
+
+pub fn verify_detached_87(
+    verifier: &MlDsa87Verifier,
+    message: &[u8],
+    doc: &[u8],
+) -> AloecryptResult<()> {
+    let bytes = find_attestation(
+        doc,
+        AloecryptAlgorithmEnum::MlDsa87 as u16,
+        &verifier.address(),
+        MLDSA_87_SIGNATURE_SZ,
+    )?;
+    let Ok(signature) = <&MlDsa87Signature>::try_from(bytes) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let material = detached_signing_material(message);
+    if verifier.verify(&material, signature) {
+        Ok(())
+    } else {
+        err(StatusCodeEnum::AuthFailed)
+    }
 }
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>

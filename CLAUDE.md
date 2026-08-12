@@ -12,7 +12,7 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 117 tests
+cargo test                             # 131 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard (also run --no-default-features)
 make lint                              # schema validation (run before generating)
@@ -109,7 +109,7 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
-| `tests/` | 117 tests; external vectors where they exist |
+| `tests/` | 131 tests; external vectors where they exist |
 
 ## Testing conventions
 
@@ -127,9 +127,10 @@ remain at present.
 ## Where to pick up
 
 See "Next" in `doc/DESIGN.md`. In short: the document layer's transport —
-the extensible envelope and the armour, `src/document.rs` — is built; what
-remains of that phase is the canonical-signing-bytes guarantee,
-`AloecryptSignable`, detached signatures and encrypt-to-recipient. The
+the extensible envelope and the armour, `src/document.rs` — is built, and
+so are detached signatures with address derivation; what remains of that
+phase is encrypt-to-recipient and the struct-level canonical-signing-bytes
+guarantee (`AloecryptSignable`, landing with the first document type). The
 password KDF, the wire error-code convention and the `Copy` removal from key
 structs are done; the zeroize wipe the last of those unblocks belongs to the
 identity layer.

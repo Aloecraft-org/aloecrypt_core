@@ -304,7 +304,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-117 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+131 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 
@@ -646,6 +646,54 @@ the canonical-signing-bytes guarantee, `AloecryptSignable`, detached
 signatures and encrypt-to-recipient — builds on this transport and comes
 next.
 
+## 19. Detached signatures and addresses
+
+The first operation over the section-18 transport, with the decisions that
+shaped it.
+
+**A signature section is one complete attestation**: algorithm id (u16 LE,
+the schema's `AloecryptAlgorithm`), the signer's 32-byte address, then the
+signature bytes, all in one section value. Several signers — of the same or
+different parameter sets — are just several Signature sections; nothing
+pairs by position, and `verify_detached_*` answers for exactly one key:
+find the attestation carrying this verifier's algorithm and address, verify
+it, and report `AuthFailed` as much for "no attestation by this key" as for
+"the attestation is false" — the two must stay indistinguishable. A
+document with an unknown critical section refuses as `Unsupported` before
+any of that.
+
+**What is signed is the domain-separated hash of the message**
+(`aloecrypt.detached.v1`), not the raw bytes. Three reasons: a detached
+signature can never double as some other protocol's signature over the same
+bytes; ML-DSA never sees an unbounded message on a bounded stack; and the
+domain string versions the construction. The trade is that Keccak-256
+collision resistance becomes binding for detached signatures — acceptable,
+and the same trade every predigest scheme makes.
+
+**An address is the domain-separated hash of a key's addressing material**
+under an algorithm-naming domain (`aloecrypt.address.mldsa44.v1`, …), via
+the schema's `AloecryptAddressable` hook — previously declared and
+unimplemented, now implemented by the three DSA verifiers. Keys of
+different algorithms can never share an address, `address()` is on the
+verifier traits in the schema, and documents carry the 32 bytes in place of
+a 1.3–2.6 KB public key (section 5's seed-first economics, applied to the
+wire).
+
+**A pinned fixture locks the whole construction**: a detached signature
+document generated once from a fixed seed is committed armored
+(`tests/fixtures/detached_44.asc`), and the suite both re-derives it
+byte-for-byte (ML-DSA signing is deterministic) and verifies it. A silent
+change to the envelope layout, section format, either domain string, or the
+address derivation makes the fixture fail. The address derivation is pinned
+separately.
+
+**Hardening found in the doing:** every `verify` implementation ended in
+`Signature::decode(..).unwrap()`, and not every byte pattern decodes as a
+signature — attacker-supplied bytes could abort the process under
+`panic = "abort"` instead of failing verification. All six now return
+`false` on decode failure, and the tests flip bits deep in signature bytes
+to hold that.
+
 ## Next
 
 In rough order of value, and roughly independent of each other:
@@ -657,11 +705,12 @@ In rough order of value, and roughly independent of each other:
    status contract.
 3. ~~Remove `Copy` from key structs~~ — **done**, section 15. The zeroize
    wipe itself is still open and belongs to the identity layer's type split.
-4. **The document layer** (section 3) — transport half **done**, section 18:
-   the extensible envelope and the armor, both pinned against independent
-   implementations. Remaining: the canonical-signing-bytes guarantee,
-   `AloecryptSignable`, detached signatures and encrypt-to-recipient — the
-   parts that make certs, CSRs and revocations one problem instead of four.
+4. **The document layer** (section 3) — transport **done** (section 18:
+   envelope and armor) and detached signatures **done** (section 19, with
+   address derivation). Remaining: encrypt-to-recipient, and the
+   struct-level canonical-signing-bytes guarantee with `AloecryptSignable`,
+   which lands with the first signable document type — the parts that make
+   certs, CSRs and revocations one problem instead of four.
 5. ~~Schema lint pass~~ — **done**. `generator/lint_schema.py` (925 checks
    now, grown with the status contract): every `impls` pair resolving, every
    referenced type existing, enum discriminants unique and defaults present,
