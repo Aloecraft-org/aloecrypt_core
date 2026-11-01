@@ -12,11 +12,12 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 142 tests
+cargo test                             # 153 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard (also run --no-default-features)
 make lint                              # schema validation (run before generating)
-make generate                          # Python bindings (needs pydantic)
+make generate                          # Python and TypeScript bindings (needs pydantic)
+make check_ts                          # tsc --strict + stub-plugin test of the TS bindings
 ```
 
 `build.rs` reads `config/api_core.json` and `doc/api_core_docs.json`, merges
@@ -45,7 +46,7 @@ a new warning fails the build.
 **Post-quantum only on the spine.** No classical asymmetric algorithm belongs in
 this crate — not ECDSA, RSA, X25519 or Ed25519, including verify-only paths. A
 consumer needing to verify a foreign classical chain does it in a separate
-crate. Legacy hash interop is allowed at the *edge*, chosen per use: `TotpAlgorithm`
+crate. Legacy hash interop is allowed at the *edge*, chosen per use: `OtpAlgorithm`
 carrying SHA-1 for compatibility is the reference example.
 
 **Every feature must be switchable.** `--no-default-features` has to build, for
@@ -109,15 +110,15 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
-| `tests/` | 142 tests; external vectors where they exist |
+| `tests/` | 153 tests; external vectors where they exist |
 
 ## Testing conventions
 
 External ground truth is preferred over self-consistency, and exhaustive over
 sampled where the domain is small — an exhaustive GF(256) check is what found a
 one-element bug in `gf256_inv` that a random sample would have missed 99.6% of
-the time. BIP-39 is checked against the specification vectors and TOTP against
-RFC 6238; the password KDF is pinned per profile against the Argon2 reference
+the time. BIP-39 is checked against the specification vectors and OTP against
+RFC 4226 and RFC 6238; the password KDF is pinned per profile against the Argon2 reference
 implementation.
 
 An `#[ignore]`d test names the decision or defect it is waiting on, so the gap

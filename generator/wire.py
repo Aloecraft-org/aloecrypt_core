@@ -97,9 +97,16 @@ def build_packed_field(
     if inner.startswith("mut "):
         inner = inner[4:].strip()
 
-    sz = meta.type_sizes.get(inner)
-    is_prim = inner in PRIMITIVE_TYPES and inner not in ("u8", "bool")
-    prim_sz = PRIMITIVE_TYPES.get(inner) if is_prim else None
+    if inner in meta.meta_enums:
+        inner_repr = meta.meta_enums[inner].repr_type
+        sz = meta.type_sizes.get(inner_repr)
+        is_prim = inner_repr in PRIMITIVE_TYPES and inner_repr not in ("u8", "bool")
+        prim_sz = PRIMITIVE_TYPES.get(inner_repr) if is_prim else None
+    else:
+        sz = meta.type_sizes.get(inner)
+        is_prim = inner in PRIMITIVE_TYPES and inner not in ("u8", "bool")
+        prim_sz = PRIMITIVE_TYPES.get(inner) if is_prim else None
+
 
     next_off = (offset + sz) if (offset is not None and sz is not None) else None
 

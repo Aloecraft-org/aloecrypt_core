@@ -15,7 +15,7 @@ layer grows into certificates, CSRs, and a tool usable in place of GPG.
 
 | Layer | Contents |
 |---|---|
-| Primitives | ML-KEM, ML-DSA, ChaCha20-Poly1305, Keccak/SHAKE, CSPRNG, Shamir / SLIP-39 / BIP-39, TOTP |
+| Primitives | ML-KEM, ML-DSA, ChaCha20-Poly1305, Keccak/SHAKE, CSPRNG, Shamir / SLIP-39 / BIP-39, HOTP/TOTP |
 | Documents | Canonical bytes, extensible envelope, armored text, detached signatures, encrypt-to-recipient |
 | Identity | Keys, delegation, claims, certificates, CSRs, revocation |
 | Entrypoints | Rust crate, CLI, native bindings, extism plugin |
@@ -42,7 +42,7 @@ matters.
 Interoperability with existing standards is allowed where the standard itself is the
 product, and only at the edge of the API, chosen explicitly per use.
 
-`TotpAlgorithm` is the reference example: it carries SHA1/SHA256/SHA512 so we
+`OtpAlgorithm` is the reference example: it carries SHA1/SHA256/SHA512 so we
 interoperate with every existing authenticator, plus SHA3-256/Keccak-256 for callers
 who want them. The legacy option is selected per credential and never appears in the
 middle of a construction.
@@ -53,7 +53,7 @@ Ship a **claims matrix**, generated from the schema, stating per primitive what 
 what it resists, and what it does not.
 
 This must be honest about cases where a post-quantum option buys less than it appears
-to. TOTP is the standing example: it is a shared-secret HMAC scheme with no
+to. OTP is the standing example: it is a shared-secret HMAC scheme with no
 quantum-vulnerable asymmetric primitive in it, so choosing Keccak-256 over SHA1 is a
 hash-strength upgrade and not a post-quantum one. A library pitched on getting ahead of
 the curve is judged on precisely this kind of precision.
@@ -214,17 +214,18 @@ pipeline still resolves by lookup with no errors of its own — the lint is a
 checkpoint, not a cure, and new generator features need new lint rules to stay
 guarded.
 
-**The TypeScript generator cannot run.** `TypeScriptGenerator` leaves
-`emit_namespace_wrappers` unimplemented and its `main()` reads a path that does
-not exist. Pre-existing, and matches the original repo's "partial for
-typescript" note; `make generate` only runs the Python generator.
+**`&[u16]` has no wire encoding.** `VarU16_255::from_u16_arr` takes one, and
+both generators pass the caller's bytes through unchanged, so the caller must
+supply little-endian `u16`s. The TypeScript bindings otherwise mirror the
+Python ones, status prefix included; `make check_ts` type-checks them under
+`--strict` and runs them against a stub plugin, and CI runs it.
 
 ## 9. Upstream, and where the stack actually goes
 
 `ml-dsa` and `ml-kem` are now on their first stable releases (0.1.1 and 0.3.2)
 rather than release candidates. The migration is contained: `KeyGen` is gone,
 `SigningKey<P>` replaces the old associated `KeyPair` type, and `from_seed` is
-an inherent method on it. Six private helpers in `src/dsa.rs` changed.
+an inherent method on it. Six private helpers in `src/mldsa.rs` changed.
 
 **It is wire compatible.** Public keys, signatures, KEM public keys, ciphertexts
 and shared secrets are byte-identical across the two versions for the same
@@ -258,7 +259,7 @@ via `ExpandedSigningKey::from_seed` costs *more* stack than building the
 `SigningKey` and cloning its expanded key — 279.8 KB against 273.8 KB for
 ML-DSA-65. `ExpandedSigningKey::from_seed` does exactly that internally and is
 `#[inline]`, so inlining extends the live range rather than shortening it.
-`src/dsa.rs` uses the cheaper form; a comment there says why, because it reads
+`src/mldsa.rs` uses the cheaper form; a comment there says why, because it reads
 like the more wasteful option.
 
 So the pins are worth updating for being out of RC and for costing nothing, not
@@ -304,7 +305,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-142 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+153 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 
@@ -321,8 +322,8 @@ External ground truth, rather than self-consistency, where it exists:
 - **BIP-39** against five canonical vectors from the specification, including
   both 128-bit and 256-bit entropy. All pass — the implementation is spec
   compatible.
-- **TOTP** against the RFC 6238 Appendix B vectors for SHA-1, SHA-256 and
-  SHA-512. All pass.
+- **OTP**: HOTP against the RFC 4226 Appendix D vectors, TOTP against the
+  RFC 6238 Appendix B vectors for SHA-1, SHA-256 and SHA-512. All pass.
 - **GF(256) and GF(1024)** checked exhaustively for inverses, involution,
   identity and commutativity rather than sampled. This is what found the
   `gf256_inv` bug.
@@ -354,8 +355,7 @@ chosen so the value crosses the FFI boundary unchanged — so:
   members.
 
 Neither introduces a richer enum type that would need converting at the
-boundary. `totp_api` now emits its four exports; generated Python went from
-101,642 to 110,866 bytes.
+boundary. `otp_api` emits all fourteen of its exports.
 
 Two things surfaced while fixing it:
 
@@ -366,12 +366,6 @@ with a nested struct field raised `'bytes' object has no attribute 'pack'`. This
 predates the enum work and affected `AloeRngU8Result`, `RecoverableSecret`,
 `RecoveryKey` and `AloecryptAttribute`. Fixed by defaulting to an instance of
 the nested type.
-
-**The TypeScript generator is not runnable.** `TypeScriptGenerator` leaves
-`emit_namespace_wrappers` unimplemented, so the class cannot be instantiated,
-and its `main()` reads `"../api_core.json"`, a path that does not exist. Both
-predate this work and match the original repo's "partial for typescript" note.
-`make generate` only runs the Python generator, so nothing depends on it today.
 
 CI now asserts that every one of the nine namespaces emits at least one export,
 and separately that every generated struct default-constructs, packs to exactly
@@ -461,7 +455,7 @@ Key-bearing structs and every struct that contains one no longer derive
 `Copy`: the ML-DSA and ML-KEM keypairs, the KEM encapsulation results (they
 hold the shared secret), `PasswordCipher` and both chunk results, `AloeRng`
 and its four step results, `RecoveryKey`/`RecoverableSecret`, and
-`TotpCredential`. Twenty structs in all. Public-key-only types — the
+`OtpCredential`. Twenty structs in all. Public-key-only types — the
 verifiers and encapsulators — and the general-purpose Var types keep `Copy`.
 
 The reason `Copy` had to go: `Copy` and `Drop` are mutually exclusive in
@@ -480,7 +474,7 @@ which every generated struct does.
 
 Removing `Copy` is the prerequisite; the wipe itself is still future work.
 `zeroize` remains a to-be-added dependency of the identity layer (section 5),
-and the Var types inside `TotpCredential` are still `Copy` at their own
+and the Var types inside `OtpCredential` are still `Copy` at their own
 level. (`zeroize` and `subtle` are already in the tree transitively via
 `chacha20poly1305` — RustCrypto wipes its own internal key material.) The
 recovery MAC comparison, previously a variable-time `assert_eq!`, is now a
@@ -759,7 +753,6 @@ In rough order of value, and roughly independent of each other:
    no name shadowed across namespaces, and a cross-check against what
    `meta.py` actually loaded, which is what catches a silently dropped
    struct. `make generate` runs it first; CI runs it separately.
-6. **Finish or delete `gen_ts.py`** (section 8). It cannot run today, which
-   makes the TypeScript half of "multiple entrypoints" further away than the
-   file's presence suggests. If kept, its first real feature is the status
-   prefix from section 16.
+6. ~~Finish or delete `gen_ts.py`~~ — **done**, kept. It decodes the status
+   prefix from section 16 and is type-checked and stub-tested in CI
+   (section 8).

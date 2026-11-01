@@ -30,6 +30,13 @@ lint: merge_docs
 # The generators read the merged schema that build.rs emits.
 generate: lint
 	@python3 ./generator/gen_py.py
+	@python3 ./generator/gen_ts.py
+
+# Type-check the generated TypeScript and run it against a stub plugin.
+check_ts: generate
+	@cd .generated/gen_ts && tsc --strict --target es2020 --module es2020 --outDir out aloecrypt_core.ts
+	@mv .generated/gen_ts/out/aloecrypt_core.js .generated/gen_ts/out/aloecrypt_core.mjs
+	@node ./generator/check_ts.mjs .generated/gen_ts/out/aloecrypt_core.mjs
 
 build:
 	@cargo build --profile release

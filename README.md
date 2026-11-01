@@ -22,15 +22,18 @@ next, and [`CLAUDE.md`](CLAUDE.md) for build invariants.
 ## Structure
 
 ```
-api_core.json          Schema driving all code generation
+config/api_core.json   Schema driving all code generation
 build.rs               Generates src/api_core.rs at compile time (Rust types, traits, consts)
 generator/gen_py.py    Generates Python bindings from the same schema
+generator/gen_ts.py    Generates TypeScript bindings from the same schema
 src/
   lib.rs               no_std library; includes generated api_core.rs
-  dsa.rs               ML-DSA 44/65/87 signing and verification
-  kem.rs               ML-KEM 512/768/1024 encapsulation/decapsulation
+  mldsa.rs             ML-DSA 44/65/87 signing and verification
+  mlkem.rs             ML-KEM 512/768/1024 encapsulation/decapsulation
   password.rs          ChaCha20-Poly1305 chunked encryption
-  pkdf.rs              SHAKE-256 key derivation
+  pkdf.rs              Argon2id password key derivation
+  otp.rs               HOTP/TOTP credentials and otpauth URIs
+  plugin/pqc.rs        Flat seed-and-bytes ML-DSA/ML-KEM wrappers
   rng.rs               ChaCha20-based CSPRNG (AloeRng)
   hash.rs              Keccak-256 hash and HMAC
 src/bin/align.rs       Integration smoke test (requires std)
@@ -44,14 +47,15 @@ The `no_std` + `no_main` attributes on `lib.rs` are intentional -- the library t
 
 - `build.rs` reads the schema at compile time and emits `api_core.rs`, which contains the Rust modules, types, and trait definitions the `src/` implementations depend on.
 - `generator/gen_py.py` reads the same schema and emits Python dataclasses, ABC trait classes, wire-format pack/unpack helpers, and Extism call wrappers.
+- `generator/gen_ts.py` emits the TypeScript equivalent: classes with `toBytes`/`fromBytes`, trait interfaces, and async Extism call wrappers.
 
-To regenerate Python bindings:
+To regenerate the Python and TypeScript bindings:
 
 ```sh
 make generate
 ```
 
-Output is written to `.generated/gen_py/aloecrypt.py`.
+Output is written to `.generated/gen_py/aloecrypt_core.py` and `.generated/gen_ts/aloecrypt_core.ts`.
 
 ## Build
 

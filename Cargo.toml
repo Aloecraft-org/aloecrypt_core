@@ -68,8 +68,8 @@ ignored = ["zerocopy"]
 [build-dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
 
-# Only these three seed themselves from the host OS; shamir and totp take their
-# entropy as a parameter and build without host_rng.
+# Only these seed themselves from the host OS; shamir and otp take their
+# entropy as a parameter (or need none) and build without host_rng.
 [[bin]]
 name = "align"
 required-features = ["host_rng"]
@@ -80,4 +80,12 @@ required-features = ["host_rng"]
 
 [[bin]]
 name = "slip39"
+required-features = ["host_rng"]
+
+[[bin]]
+name = "mldsa"
+required-features = ["host_rng"]
+
+[[bin]]
+name = "mlkem"
 required-features = ["host_rng"]

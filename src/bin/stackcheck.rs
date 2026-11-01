@@ -42,10 +42,10 @@
 
 #![allow(warnings)]
 
-use aloecrypt_core::dsa::*;
 use aloecrypt_core::dsa_api::*;
-use aloecrypt_core::kem::*;
 use aloecrypt_core::kem_api::*;
+use aloecrypt_core::mldsa::*;
+use aloecrypt_core::mlkem::*;
 use aloecrypt_core::pkdf::*;
 use aloecrypt_core::pkdf_api::*;
 

@@ -1,4 +1,4 @@
-// src/dsa.rs
+// src/mldsa.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 use super::dsa_api::*;
 
@@ -111,6 +111,12 @@ impl MlDsa44Verifier {
     fn _verifier(&self) -> VerifyingKey<MlDsa44Params> {
         VerifyingKey::<MlDsa44Params>::decode((&self.public_key).into())
     }
+
+    pub fn from_public_key(public_key: &MlDsa44Pubkey) -> Self {
+        MlDsa44Verifier {
+            public_key: public_key.clone(),
+        }
+    }
 }
 
 impl MlDsa65Verifier {
@@ -118,12 +124,24 @@ impl MlDsa65Verifier {
     fn _verifier(&self) -> VerifyingKey<MlDsa65Params> {
         VerifyingKey::<MlDsa65Params>::decode((&self.public_key).into())
     }
+
+    pub fn from_public_key(public_key: &MlDsa65Pubkey) -> Self {
+        MlDsa65Verifier {
+            public_key: public_key.clone(),
+        }
+    }
 }
 
 impl MlDsa87Verifier {
     #[inline(never)]
     fn _verifier(&self) -> VerifyingKey<MlDsa87Params> {
         VerifyingKey::<MlDsa87Params>::decode((&self.public_key).into())
+    }
+
+    pub fn from_public_key(public_key: &MlDsa87Pubkey) -> Self {
+        MlDsa87Verifier {
+            public_key: public_key.clone(),
+        }
     }
 }
 

@@ -16,11 +16,11 @@ use sha3::{Keccak256, Sha3_256};
 type HmacShake256 = Hmac<Keccak256>;
 type HmacSha3_256 = Hmac<Sha3_256>;
 
-use aloecrypt_core::dsa::*;
 use aloecrypt_core::dsa_api::*;
 use aloecrypt_core::hash::*;
-use aloecrypt_core::kem::*;
 use aloecrypt_core::kem_api::*;
+use aloecrypt_core::mldsa::*;
+use aloecrypt_core::mlkem::*;
 use aloecrypt_core::password::*;
 use aloecrypt_core::password_api::*;
 use aloecrypt_core::recovery;

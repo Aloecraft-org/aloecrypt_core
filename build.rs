@@ -5,6 +5,10 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+// Schema namespaces whose hand-written module is not the namespace name minus
+// `_api`. The fn-pointer assertions in generate_functions resolve through this.
+const NAMESPACE_MODULES: &[(&str, &str)] = &[("dsa_api", "mldsa"), ("kem_api", "mlkem")];
+
 fn generate_sz_consts(out: &mut File, value: &serde_json::Value, namespace: &str) {
     let indent = "    ";
     if let Some(items) = value.as_array() {
@@ -66,7 +70,11 @@ fn generate_byte_aliases(out: &mut File, value: &serde_json::Value, namespace: &
 // signature, so any mismatch is a compile error naming the function.
 fn generate_functions(out: &mut File, value: &serde_json::Value, namespace: &str) {
     let indent = "    ";
-    let module = namespace.strip_suffix("_api").unwrap_or(namespace);
+    let module = NAMESPACE_MODULES
+        .iter()
+        .find(|(ns, _)| *ns == namespace)
+        .map(|(_, m)| *m)
+        .unwrap_or_else(|| namespace.strip_suffix("_api").unwrap_or(namespace));
     if let Some(items) = value.as_array() {
         for entry in items {
             let name = entry["name"].as_str().unwrap();

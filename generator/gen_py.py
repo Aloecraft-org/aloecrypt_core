@@ -22,6 +22,9 @@ GEN_DIR = Path(".generated", "gen_py")
 
 # ── Type mapping ─────────────────────────────────────────────────────────────
 
+# Signed integers cross the wire as little-endian two's complement.
+SIGNED_STRUCT_FMT = {"i8": "<b", "i16": "<h", "i32": "<i", "i64": "<q"}
+
 PY_TYPE_MAP = {
     "u8": "int",
     "u16": "int",
@@ -437,6 +440,8 @@ class PythonGenerator(LangGenerator):
             return f"self.{f.name}.to_bytes(16, 'little')"
         elif t == "bool":
             return f"_struct.pack('<B', 1 if self.{f.name} else 0)"
+        elif t in SIGNED_STRUCT_FMT:
+            return f"_struct.pack('{SIGNED_STRUCT_FMT[t]}', self.{f.name})"
         else:
             # byte alias or nested struct — already bytes
             sz = self.meta.type_sizes.get(t)
@@ -466,6 +471,9 @@ class PythonGenerator(LangGenerator):
         elif t == "bool":
             lines.append(f"{indent}{f.name} = data[offset] != 0")
             lines.append(f"{indent}offset += 1")
+        elif t in SIGNED_STRUCT_FMT:
+            lines.append(f"{indent}{f.name} = _struct.unpack_from('{SIGNED_STRUCT_FMT[t]}', data, offset)[0]")
+            lines.append(f"{indent}offset += {PRIMITIVE_TYPES[t]}")
         else:
             sz = self.meta.type_sizes.get(t)
             if sz and t in self.meta.meta_structs:
@@ -586,6 +594,10 @@ class PythonGenerator(LangGenerator):
             lines.append("    return bytes(result)")
         elif inner in ("usize", "u8", "u16", "u32", "u64", "u128"):
             lines.append("    return int.from_bytes(result, 'little')")
+        elif inner in SIGNED_STRUCT_FMT:
+            lines.append("    return int.from_bytes(result, 'little', signed=True)")
+        elif inner in self.meta.meta_enums:
+            lines.append(f"    return {inner}(int.from_bytes(result, 'little'))")
         elif inner in self.meta.meta_structs:
             lines.append(f"    return {inner}.unpack(result)")
         else:
@@ -618,6 +630,10 @@ class PythonGenerator(LangGenerator):
                 return f"_pack_str({pf.name})"
             return f"_pack_varlen({pf.name})"
         inner = strip_ref(t)
+        # Enums are flat values over their repr type on the wire.
+        inner = self._enum_repr(inner) or inner
+        if inner in SIGNED_STRUCT_FMT:
+            return f"_struct.pack('{SIGNED_STRUCT_FMT[inner]}', {pf.name})"
         if inner == "u32":
             return f"_pack_u32({pf.name})"
         elif inner == "u64":

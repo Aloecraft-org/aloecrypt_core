@@ -101,7 +101,7 @@ jobs:
       - name: slip39 round trip
         run: cargo run --release --bin slip39
 
-  # Guards the #[inline(never)] stack decomposition in src/dsa.rs. Host-arch
+  # Guards the #[inline(never)] stack decomposition in src/mldsa.rs. Host-arch
   # numbers, so this catches regressions rather than sizing the device.
   stack:
     name: stack budget
@@ -151,7 +151,7 @@ jobs:
           test -f "$out"
           fail=0
           for ns in aloecrypt_api dsa_api kem_api hash_api pkdf_api \
-                    password_api rng_api recovery_api totp_api; do
+                    password_api rng_api recovery_api otp_api; do
             n=$(grep -cE "^def ${ns}___" "$out" || true)
             printf '%-16s %3d exports\n' "$ns" "$n"
             if [ "$n" -eq 0 ]; then
@@ -258,3 +258,25 @@ jobs:
 
           print("wire status prefix: decode, raise, short-reply and truncated-Ok paths all pass")
           EOF
+
+  # The TypeScript bindings must type-check under --strict and decode the
+  # status prefix the same way the Python ones do.
+  codegen-ts:
+    name: codegen / typescript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Swatinem/rust-cache@v2
+      - name: install generator deps
+        run: |
+          pip install pydantic
+          npm install -g typescript@5.9.3
+      - name: generate, type-check and stub-test
+        run: make check_ts
