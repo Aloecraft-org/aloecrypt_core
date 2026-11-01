@@ -4,11 +4,39 @@
     "major": 0,
     "minor": 1,
     "patch": 0,
-    "build": 0
+    "pre": null
+  },
+  "TECHNO_CHANGELOG": {
+    "project": "aloecrypt_core",
+    "tag_rule": "exact",
+    "emit_json": false,
+    "stamps": [
+      {
+        "file": "Cargo.toml",
+        "find": "^version\\s*=\\s*\"([^\"]+)\"",
+        "spelling": "semver"
+      }
+    ],
+    "latest_requires": [
+      "stable"
+    ]
+  },
+  "TECHNO_RELEASE": {
+    "workflow": "release.yml",
+    "name": "aloecrypt_core {tag}",
+    "artifacts": "dist-*",
+    "dev_builds": true
+  },
+  "TECHNO_LOCKSTEP": {
+    "surfaces": [
+      "README.md",
+      "examples/"
+    ]
   },
   "TECHNO_INIT_DIRS": [
     ".nogit",
-    ".dump"
+    ".dump",
+    "script"
   ],
   "TECHNO_COPYRIGHT": "Copyright Michael Godfrey [2026] | aloecraft.org [michael@aloecraft.org]"
 }
