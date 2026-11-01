@@ -4,8 +4,10 @@ repo: Aloecraft-org/aloecrypt_core
 releases:
   - version: "0.1.0"
     tag: v0.1.0
-    status: unreleased
-    stable: false
+    date: "2026-11-01"
+    status: released
+    stable: true
+    latest: true
     mirror: false
     summary: |
       The first release. A no_std post-quantum cryptography library: ML-DSA
@@ -33,3 +35,7 @@ releases:
         Multi-recipient encryption and the struct-level canonical signing
         bytes guarantee are not built yet. Key material is not zeroized on
         drop.
+      - |
+        The `--no-default-features` build still needs a global allocator,
+        pulled in by the `url` crate in OTP URI parsing, which is also most
+        of the OTP code size (#3).
