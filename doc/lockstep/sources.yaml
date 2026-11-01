@@ -1,0 +1,16 @@
+# Where product truth lives. The operator reads only what is listed here.
+product: null     # technoproj: fill in
+
+facts:            # single source of truth for product claims
+  repo: null
+  path: null
+
+docs: []
+
+# How this repo exchanges asks with other repos (dispatch.md).
+dispatch:
+  name: aloecrypt_core
+  outbox: doc/lockstep/dispatch.md
+  # Where asks for this repo arrive: {repo: owner/name, path: file} in
+  # the router, or `issues` for issues labelled dispatch in this repo.
+  inbox: issues
