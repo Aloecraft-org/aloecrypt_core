@@ -1,0 +1,8 @@
+📄 src/shamir.rs                            ✅ SUCCESS (Δ-10 lines)
+   1. ✅ @ Remove ShamirSecret struct     [Rep: 12, New: 0, Δ-12]
+   2. ✅ @ Update share creation mac...   [Rep: 4, New: 4, Δ+0]
+   3. ✅ @ Prepend location to the V...   [Rep: 8, New: 8, Δ+0]
+   4. ✅ @ Update _create_n_shares s...   [Rep: 7, New: 8, Δ+1]
+   5. ✅ @ Shift payload generation ...   [Rep: 12, New: 12, Δ+0]
+   6. ✅ @ Refactor combination logi...   [Rep: 6, New: 7, Δ+1]
+   7. ✅ @ Refactor Lagrange logic o...   [Rep: 11, New: 11, Δ+0]

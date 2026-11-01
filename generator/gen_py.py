@@ -10,7 +10,7 @@ Emits:
 
 from meta import (
     APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam,
-    MetaByteAlias, MetaConst, MetaField,
+    MetaByteAlias, MetaConst, MetaField, MetaEnum,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
 from wire import WireCall, PackedField, build_wire_calls
@@ -18,7 +18,7 @@ from gen_base import LangGenerator
 from pathlib import Path
 
 GEN_DIR = Path(".generated", "gen_py")
-
+API_DIR = GEN_DIR / "api"
 
 # ── Type mapping ─────────────────────────────────────────────────────────────
 
@@ -83,37 +83,7 @@ class PythonGenerator(LangGenerator):
             "from abc import ABC, abstractmethod",
             "from dataclasses import dataclass, field",
             "from typing import Optional, ClassVar",
-            "",
-            "",
-            "class _Plugin:",
-            "    _instance = None",
-            "    _plugin = None",
-            "    _wasm_path: str = None",
-            "",
-            "    def __new__(cls):",
-            "        if cls._instance is None:",
-            "            cls._instance = super(_Plugin, cls).__new__(cls)",
-            "        return cls._instance",
-            "",
-            "    @classmethod",
-            "    def configure(cls, wasm_path: str):",
-            '        """Set the path to the WASM plugin binary."""',
-            "        cls._wasm_path = wasm_path",
-            "        cls._plugin = None  # Reset so next access reloads",
-            "        cls._instance = None",
-            "",
-            "    @property",
-            "    def plugin(self):",
-            "        if self._plugin is None:",
-            "            if self._wasm_path is None:",
-            '                raise RuntimeError("Call _Plugin.configure(wasm_path) before using aloecrypt")',
-            "            import extism",
-            "            with open(self._wasm_path, 'rb') as f:",
-            "                wasm_bytes = f.read()",
-            "            _Plugin._plugin = extism.Plugin(wasm_bytes, wasi=True)",
-            "        return self._plugin",
-            "",
-            "",
+            "from enum import IntEnum",
         ]
 
     def file_footer(self) -> list[str]:
@@ -199,6 +169,20 @@ class PythonGenerator(LangGenerator):
         lines = []
         for c in consts.values():
             lines.append(f"{c.name}: int = {c.value}")
+        return lines
+
+    # ── Enums ─────────────────────────────────────────────────────────────
+
+    def emit_enums(self, enums: dict[str, MetaEnum]) -> list[str]:
+        lines = []
+        for e in enums.values():
+            lines.append(f"class {e.name}(IntEnum):")
+            if e.description:
+                lines.append(f'    """{e.description}"""')
+            for m in e.members:
+                desc = f"  # {m.description}" if m.description else ""
+                lines.append(f"    {m.name} = {m.discriminant}{desc}")
+            lines.append("")
         return lines
 
     # ── Byte aliases ──────────────────────────────────────────────────────
@@ -298,6 +282,10 @@ class PythonGenerator(LangGenerator):
         t = f.type_name.strip()
         if t in PRIMITIVE_TYPES:
             return " = 0"
+        if t in self.meta.meta_enums:
+            e = self.meta.meta_enums[t]
+            default_member = next((m for m in e.members if m.is_default), e.members[0])
+            return f" = {t}.{default_member.name}"
         # Byte alias or struct — default to empty bytes
         sz = self.meta.type_sizes.get(t)
         if sz is not None:
@@ -356,6 +344,8 @@ class PythonGenerator(LangGenerator):
 
     def _field_pack_expr(self, f: MetaField) -> str:
         t = f.type_name.strip()
+        if t in self.meta.meta_enums:
+            t = self.meta.meta_enums[t].repr_type
         if t == "u8":
             return f"_struct.pack('<B', self.{f.name})"
         elif t == "u16":
@@ -378,31 +368,40 @@ class PythonGenerator(LangGenerator):
     def _field_unpack_lines(self, f: MetaField, indent: str) -> list[str]:
         lines = []
         t = f.type_name.strip()
+        enum_type = None
+        if t in self.meta.meta_enums:
+            enum_type = t
+            t = self.meta.meta_enums[t].repr_type
+
         if t == "u8":
-            lines.append(f"{indent}{f.name} = data[offset]")
-            lines.append(f"{indent}offset += 1")
+            val_expr = "data[offset]"
+            offset_inc = 1
         elif t == "u16":
-            lines.append(f"{indent}{f.name} = _struct.unpack_from('<H', data, offset)[0]")
-            lines.append(f"{indent}offset += 2")
+            val_expr = "_struct.unpack_from('<H', data, offset)[0]"
+            offset_inc = 2
         elif t == "u32":
-            lines.append(f"{indent}{f.name} = _struct.unpack_from('<I', data, offset)[0]")
-            lines.append(f"{indent}offset += 4")
+            val_expr = "_struct.unpack_from('<I', data, offset)[0]"
+            offset_inc = 4
         elif t == "u64":
-            lines.append(f"{indent}{f.name} = _struct.unpack_from('<Q', data, offset)[0]")
-            lines.append(f"{indent}offset += 8")
+            val_expr = "_struct.unpack_from('<Q', data, offset)[0]"
+            offset_inc = 8
         elif t == "u128":
-            lines.append(f"{indent}{f.name} = int.from_bytes(data[offset:offset+16], 'little')")
-            lines.append(f"{indent}offset += 16")
+            val_expr = "int.from_bytes(data[offset:offset+16], 'little')"
+            offset_inc = 16
         elif t == "bool":
-            lines.append(f"{indent}{f.name} = data[offset] != 0")
-            lines.append(f"{indent}offset += 1")
+            val_expr = "data[offset] != 0"
+            offset_inc = 1
         else:
             sz = self.meta.type_sizes.get(t)
             if sz and t in self.meta.meta_structs:
-                lines.append(f"{indent}{f.name} = {t}.unpack(data[offset:offset+{sz}])")
+                val_expr = f"{t}.unpack(data[offset:offset+{sz}])"
             else:
-                lines.append(f"{indent}{f.name} = bytes(data[offset:offset+{sz}])")
-            lines.append(f"{indent}offset += {sz}")
+                val_expr = f"bytes(data[offset:offset+{sz}])"
+            offset_inc = sz
+
+        assign_expr = f"{enum_type}({val_expr})" if enum_type else val_expr
+        lines.append(f"{indent}{f.name} = {assign_expr}")
+        lines.append(f"{indent}offset += {offset_inc}")
         return lines
 
     def _from_bytes_args(self, struct: MetaStruct) -> str:
@@ -488,9 +487,17 @@ class PythonGenerator(LangGenerator):
                 lines.append("    return bytes(result)")
         elif call.return_type in self.meta.meta_structs:
             lines.append(f"    return {call.return_type}.unpack(result)")
+        elif call.return_type in self.meta.meta_enums:
+            e = self.meta.meta_enums[call.return_type]
+            if e.repr_type == "u8":
+                lines.append(f"    return {call.return_type}(result[0])")
+            else:
+                fmt = {'u16': '<H', 'u32': '<I', 'u64': '<Q'}.get(e.repr_type, '<I')
+                lines.append(f"    return {call.return_type}(_struct.unpack('{fmt}', result)[0])")
         else:
             # byte alias
             lines.append("    return bytes(result)")
+
 
         return lines
 
@@ -501,6 +508,8 @@ class PythonGenerator(LangGenerator):
                 return f"_pack_str({pf.name})"
             return f"_pack_varlen({pf.name})"
         inner = strip_ref(t)
+        if inner in self.meta.meta_enums:
+            inner = self.meta.meta_enums[inner].repr_type
         if inner == "u32":
             return f"_pack_u32({pf.name})"
         elif inner == "u64":
@@ -545,14 +554,87 @@ class PythonGenerator(LangGenerator):
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
+    GEN_DIR.mkdir(parents=True, exist_ok=True)
+    API_DIR.mkdir(parents=True, exist_ok=True)
+
     meta = load_meta(".generated/api_core_merged.json")
     gen = PythonGenerator(meta)
     output = gen.generate()
-    GEN_DIR.mkdir(parents=True, exist_ok=True)
     outpath = GEN_DIR / "aloecrypt_core.py"
     outpath.write_text(output)
     print(f"Generated {outpath} ({len(output)} bytes)")
+    
+    # ==========================
+    outpath = GEN_DIR / "constants.py"
+    # ==========================
+    lines = []
+    lines.append(gen.section_comment("Constants"))
+    lines += gen.emit_constants(gen.meta.meta_consts)
+    lines.append("")
+    outpath.write_text("\n".join(lines))
 
+    # ==========================
+    outpath = GEN_DIR / "types.py"
+    # ==========================
+    lines = []
+    
+    # Byte aliases
+    lines.append(gen.section_comment("Byte Aliases"))
+    lines += gen.emit_byte_aliases(gen.meta.meta_byte_aliases)
+    lines.append("")
 
+    # Enums
+    lines.append(gen.section_comment("Enums"))
+    lines += gen.emit_enums(gen.meta.meta_enums)
+    lines.append("")
+    outpath.write_text("\n".join(lines))
+    
+    # ==========================
+    outpath = GEN_DIR / "traits.py"
+    # ==========================
+    lines = []
+    
+    # Traits / Interfaces
+    lines.append(gen.section_comment("Traits"))
+    for trait in gen.meta.meta_traits.values():
+        lines += gen.emit_trait(trait)
+        lines.append("")
+    outpath.write_text("\n".join(lines))
+    
+    # Call wrappers (before namespaces so struct methods can delegate)
+    # ==========================
+    outpath = GEN_DIR / "ffi.py"
+    # ==========================
+    lines = []
+    
+    lines.append(gen.section_comment("Wire Format Helpers"))
+    lines += gen.emit_pack_helpers()
+    lines.append("")
+
+    lines.append(gen.section_comment("Plugin Call Wrappers"))
+    for call in gen.wire_calls:
+        lines += gen.emit_call_wrapper(call)
+        lines.append("")
+
+    outpath.write_text("\n".join(lines))
+    
+    
+    
+    outpath = API_DIR / f"__init__.py"
+    outpath.write_text("\n")
+
+    for ns in meta.namespaces:
+        
+        outpath = API_DIR / f"{ns}.py"
+        
+        lines = []
+        outpath.write_text("\n".join(lines))
+    
+    
+    
+    # lines.append(self.section_comment("Namespaces"))
+    # lines += self.emit_namespace_wrappers()
+    # lines.append("")
+    
 if __name__ == "__main__":
     main()

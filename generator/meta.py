@@ -56,6 +56,19 @@ class MetaValueType(Enum):
 
 # ─── Data model classes ──────────────────────────────────────────────────────
 
+class MetaEnumMember(BaseModel):
+    name: str
+    discriminant: int
+    is_default: bool = Field(False)
+    description: Optional[str] = Field(None)
+
+class MetaEnum(BaseModel):
+    name: str
+    namespace: str
+    repr_type: str
+    members: list[MetaEnumMember]
+    description: Optional[str] = Field(None)
+
 class MetaConst(BaseModel):
     name: str
     namespace: str
@@ -171,6 +184,7 @@ class APIMetaData(BaseModel):
     const_literals: dict[str, int]
     meta_consts: dict[str, MetaConst]
     meta_byte_aliases: dict[str, MetaByteAlias]
+    meta_enums: dict[str, MetaEnum]
     meta_structs: dict[str, MetaStruct]
     meta_traits: dict[str, MetaTrait]
     meta_trait_impls: list[MetaTraitImpl]
@@ -248,6 +262,7 @@ def load_meta(filename: str) -> APIMetaData:
     const_literals: dict[str, int] = {}
     meta_consts: dict[str, MetaConst] = {}
     meta_byte_aliases: dict[str, MetaByteAlias] = {}
+    meta_enums: dict[str, MetaEnum] = {}
     meta_structs: dict[str, MetaStruct] = {}
     meta_traits: dict[str, MetaTrait] = {}
     meta_trait_impls: list[MetaTraitImpl] = []
@@ -301,6 +316,28 @@ def load_meta(filename: str) -> APIMetaData:
                     len_str=length_expr, length=resolved)
                 type_sizes[ba["name"]] = resolved
 
+    # ── Pass 2.5: Enums ──
+    for ns_name, ns_val in schema.items():
+        if not isinstance(ns_val, dict):
+            continue
+        for e in ns_val.get("enums", []):
+            ename = e["name"]
+            repr_type = e.get("repr_type", "u32")
+            members = []
+            for m in e.get("members", []):
+                members.append(MetaEnumMember(
+                    name=m["name"],
+                    discriminant=int(m["discriminant"]),
+                    is_default=str(m.get("default", "false")).lower() == "true",
+                    description=m.get("description")
+                ))
+            meta_enums[ename] = MetaEnum(
+                name=ename, namespace=ns_name,
+                repr_type=repr_type, members=members,
+                description=e.get("description")
+            )
+            type_sizes[ename] = type_sizes.get(repr_type, 4)
+
     # ── Pass 3: Structs ──
     all_structs = []
     for ns_name, ns_val in schema.items():
@@ -328,6 +365,7 @@ def load_meta(filename: str) -> APIMetaData:
                 if ft in type_sizes:
                     total += type_sizes[ft]
                 else:
+                    print(f"warning: {ns_name} - field size not known: {s["name"]}.{field["name"]}")
                     all_known = False
                     break
             if all_known:
@@ -430,6 +468,7 @@ def load_meta(filename: str) -> APIMetaData:
         const_literals=const_literals,
         meta_consts=meta_consts,
         meta_byte_aliases=meta_byte_aliases,
+        meta_enums=meta_enums,
         meta_structs=meta_structs,
         meta_traits=meta_traits,
         meta_trait_impls=meta_trait_impls,

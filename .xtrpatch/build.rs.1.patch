@@ -1,0 +1,38 @@
+--- a/build.rs
+@ In generate_traits, emit param descriptions as /// * `name` - desc lines after the function doc comment
+<<<< 206:214
+                        if let Some(function_description) = function.get("description") {
+                            writeln!(
+                                out,
+                                "{}    /// {}",
+                                indent,
+                                function_description.as_str().unwrap()
+                            )
+                            .unwrap();
+                        }
+====
+                        if let Some(function_description) = function.get("description") {
+                            writeln!(
+                                out,
+                                "{}    /// {}",
+                                indent,
+                                function_description.as_str().unwrap()
+                            )
+                            .unwrap();
+                        }
+
+                        // Emit param descriptions as doc comment lines
+                        if let Some(params) = function["params"].as_array() {
+                            for p in params {
+                                if let Some(pdesc) = p.get("description") {
+                                    writeln!(
+                                        out,
+                                        "{}    /// * `{}` - {}",
+                                        indent,
+                                        p["name"].as_str().unwrap(),
+                                        pdesc.as_str().unwrap()
+                                    ).unwrap();
+                                }
+                            }
+                        }
+>>>>

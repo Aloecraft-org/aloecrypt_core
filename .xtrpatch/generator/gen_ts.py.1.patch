@@ -1,0 +1,63 @@
+--- a/generator/gen_ts.py
+@ Implement the missing abstract method and emit structs/namespaces
+<<<< 323:327
+    # ── Call wrappers ─────────────────────────────────────────────────────
+
+    def emit_call_wrapper(self, call: WireCall) -> list[str]:
+        lines = []
+
+====
+    # ── Namespaces ────────────────────────────────────────────────────────
+
+    def emit_namespace_wrappers(self) -> list[str]:
+        lines = []
+
+        # Emit all structs at top-level
+        for struct in self.meta.meta_structs.values():
+            lines += self.emit_struct(struct)
+            lines.append("")
+
+        # Emit namespace wrappers for standalone functions
+        ns_functions: dict[str, list[str]] = {}
+        for func in self.meta.meta_functions.values():
+            ns_functions.setdefault(func.namespace, []).append(func.name)
+
+        for ns in self.meta.namespaces:
+            fnames = ns_functions.get(ns, [])
+            if not fnames:
+                continue
+
+            lines.append(f"export namespace {ns} {{")
+            for fname in fnames:
+                func = self.meta.meta_functions[fname]
+                export_name = f"{ns}___{fname}"
+
+                params = []
+                call_args = []
+                for param in func.params.values():
+                    if not param.is_rng:
+                        ts_type = self.map_type(param.type_str)
+                        params.append(f"{param.name}: {ts_type}")
+                        call_args.append(param.name)
+
+                ret_ts = "void"
+                if func.ret_str:
+                    ret_ts = self.map_return_type(func.ret_str, None)
+
+                params.append("plugin: ExtismPlugin")
+                call_args.append("plugin")
+
+                lines.append(f"  export async function {fname}({', '.join(params)}): Promise<{ret_ts}> {{")
+                lines.append(f"    return await {export_name}({', '.join(call_args)});")
+                lines.append("  }")
+            lines.append("}")
+            lines.append("")
+
+        return lines
+
+    # ── Call wrappers ─────────────────────────────────────────────────────
+
+    def emit_call_wrapper(self, call: WireCall) -> list[str]:
+        lines = []
+
+>>>>

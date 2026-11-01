@@ -10,6 +10,10 @@ use sha1::{Digest as Sha1Digest, Sha1};
 use sha2::{Digest as Sha2Digest, Sha256, Sha512};
 use sha3::{Digest as Sha3Digest, Keccak256, Sha3_256};
 
+impl OtpCredential {
+    // pub fn valid(&self) -> bool { }
+}
+
 impl IOtpCredential for OtpCredential {
     fn empty() -> Self {
         Self {
@@ -362,6 +366,25 @@ impl IOtpCredential for OtpCredential {
 
         result
     }
+
+    // Builder Functions
+    fn with_counter(      &mut self, counter:      i64          ) { self.counter = counter;                                 }
+    fn with_period(       &mut self, period:       i64          ) { self.period = period;                                   }
+    fn with_t0(           &mut self, t0:           u64          ) { self.t0 = t0;                                           }
+    fn with_secret(       &mut self, secret:       &[u8]        ) { self.secret = VarByte255::from_byte_arr(secret);        }
+    fn with_algorithm(    &mut self, algorithm:    OtpAlgorithm ) { self.algorithm = algorithm;                             }
+    fn with_issuer(       &mut self, issuer:       &str         ) { self.issuer = VarChar255::from_str(issuer);             }
+    fn with_account_name( &mut self, account_name: &str         ) { self.account_name = VarChar255::from_str(account_name); }
+    fn with_label(        &mut self, label:        &str         ) { self.label = VarChar255::from_str(label);               }
+
+    // fn with_counter(      &self, counter:      i64          ) -> Self { let mut otp = *self; otp.counter = counter;                                 return otp; }
+    // fn with_period(       &self, period:       i64          ) -> Self { let mut otp = *self; otp.period = period;                                   return otp; }
+    // fn with_t0(           &self, t0:           u64          ) -> Self { let mut otp = *self; otp.t0 = t0;                                           return otp; }
+    // fn with_secret(       &self, secret:       &[u8]        ) -> Self { let mut otp = *self; otp.secret = VarByte255::from_byte_arr(secret);        return otp; }
+    // fn with_algorithm(    &self, algorithm:    OtpAlgorithm ) -> Self { let mut otp = *self; otp.algorithm = algorithm;                             return otp; }
+    // fn with_issuer(       &self, issuer:       &str         ) -> Self { let mut otp = *self; otp.issuer = VarChar255::from_str(issuer);             return otp; }
+    // fn with_account_name( &self, account_name: &str         ) -> Self { let mut otp = *self; otp.account_name = VarChar255::from_str(account_name); return otp; }
+    // fn with_label(        &self, label:        &str         ) -> Self { let mut otp = *self; otp.label = VarChar255::from_str(label);               return otp; }
 }
 
 // ---------------------------------------------------------------------------

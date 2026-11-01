@@ -1,0 +1,41 @@
+use aloecrypt_core::aloecrypt_api::*;
+use aloecrypt_core::fixed_byte::*;
+use aloecrypt_core::shamir::*;
+
+fn main() {
+    // 1. Setup the secret
+    let original_data = b"Keep it secret, keep it safe.";
+    let secret = VarByte255::from_byte_arr(original_data);
+    
+    // 2. Setup the split parameters (3-of-5)
+    let threshold = 3;
+    let seed = [0u8; 32]; // In production, use a real CSPRNG seed
+    
+    println!("Original Secret: {:?}", String::from_utf8_lossy(original_data));
+    println!("--------------------------------------------------");
+
+    // 3. Create the shares
+    let shares = create_5_shamir_shares(secret, threshold, seed);
+    
+    for (i, share) in shares.iter().enumerate() {
+        println!("Share {}: (Location: {}) Data: {:02x?}", i + 1, share.location, share.secret.to_byte_arr());
+    }
+    println!("--------------------------------------------------");
+
+    // 4. Test Recovery with exactly the threshold (3 shares)
+    // We'll intentionally take shares 0, 2, and 4 (skipping 1 and 3)
+    let recovery_subset = [shares[0].clone(), shares[2].clone(), shares[4].clone()];
+    
+    println!("Attempting recovery with 3 shares...");
+    let recovered_secret = combine_shamir_shares(&recovery_subset);
+    let recovered_data = recovered_secret.to_byte_arr();
+
+    // 5. Verify
+    println!("Recovered: {:?}", String::from_utf8_lossy(recovered_data));
+    
+    if recovered_data == original_data {
+        println!("SUCCESS: Secret reconstructed perfectly!");
+    } else {
+        println!("FAILURE: Reconstruction failed.");
+    }
+}

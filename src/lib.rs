@@ -1,6 +1,7 @@
 // src/lib.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 #![no_std]
+
 #![cfg_attr(not(test), no_main)]
 
 include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
@@ -8,11 +9,11 @@ include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 // pub mod address;
 // pub mod claim;
 pub mod bip39;
-pub mod dsa;
+pub mod mldsa;
 pub mod fixed_byte;
 pub mod galois;
 pub mod hash;
-pub mod kem;
+pub mod mlkem;
 pub mod password;
 pub mod pkdf;
 pub mod recovery;
@@ -21,6 +22,8 @@ pub mod rng;
 pub mod shamir;
 pub mod slip39;
 pub mod otp;
+
+pub mod plugin;
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //

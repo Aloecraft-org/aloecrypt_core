@@ -8,24 +8,37 @@ type HmacKeccak256 = Hmac<sha3::Keccak256>;
 
 // pub trait Hashable { fn hashing_material() -> &[u8]; }
 
-pub fn hash(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hash256 {
+pub fn _hash(salt: &[u8], ikm: &[u8], domain_info: &[u8]) -> Hash256 {
     let mut hasher = Keccak256::new();
     hasher.update(salt);
     hasher.update(ikm);
-    hasher.update(domain_info.as_bytes());
+    hasher.update(domain_info);
     hasher.finalize().into()
 }
 
-pub fn hmac(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hmac256 {
+
+pub fn _hmac(salt: &[u8], ikm: &[u8], domain_info: &[u8]) -> Hmac256 {
     let mut mac = HmacKeccak256::new_from_slice(ikm).expect("HMAC can take key of any size");
     mac.update(salt);
-    mac.update(domain_info.as_bytes());
+    mac.update(domain_info);
     let result = mac.finalize();
     (*result.as_bytes()).into()
 }
 
+pub fn hash(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hash256 {
+    _hash(salt, ikm, domain_info.as_bytes())
+}
+
+pub fn hmac(salt: &[u8], ikm: &[u8], domain_info: &str) -> Hmac256 {
+    _hmac(salt, ikm, domain_info.as_bytes())
+}
+
 pub fn salted_hmac(salt: &[u8], ikm: &[u8]) -> Hmac256 {
     hmac(salt, ikm, "")
+}
+
+pub fn _domain_hmac(ikm: &[u8], domain_info: &[u8]) -> Hmac256 {
+    _hmac("".as_bytes(), ikm, domain_info)
 }
 
 pub fn domain_hmac(ikm: &[u8], domain_info: &str) -> Hmac256 {

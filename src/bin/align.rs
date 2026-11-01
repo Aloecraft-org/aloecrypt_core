@@ -16,10 +16,10 @@ use sha3::{Keccak256, Sha3_256};
 type HmacShake256 = Hmac<Keccak256>;
 type HmacSha3_256 = Hmac<Sha3_256>;
 
-use aloecrypt_core::dsa::*;
+use aloecrypt_core::mldsa::*;
 use aloecrypt_core::dsa_api::*;
 use aloecrypt_core::hash::*;
-use aloecrypt_core::kem::*;
+use aloecrypt_core::mlkem::*;
 use aloecrypt_core::kem_api::*;
 use aloecrypt_core::password::*;
 use aloecrypt_core::password_api::*;
@@ -61,9 +61,11 @@ fn main() {
     let kem_512_encap_1_result = kem_512_keypair_1
         .get_encapsulator()
         .encapsulate(kem_512_prk);
+
     let kem_768_encap_1_result = kem_768_keypair_1
         .get_encapsulator()
         .encapsulate(kem_768_prk);
+
     let kem_1024_encap_1_result = kem_1024_keypair_1
         .get_encapsulator()
         .encapsulate(kem_1024_prk);
@@ -112,12 +114,14 @@ fn main() {
 
     let pbkdf_password = "some_password";
     let pbkdf_salt = "some_salt";
+    let pbkdf_domain = "some_domain";
     let pbkdf_iters: u32 = 10000;
 
     let pbkdf_key = aloecrypt_core::pkdf::pbkdf(
         pbkdf_password.as_bytes(),
         pbkdf_salt.as_bytes(),
         pbkdf_iters,
+        pbkdf_domain
     );
 
     let mut encrypt_material =
@@ -151,8 +155,7 @@ fn main() {
     }
 
     // DECRYPTION EXAMPLE
-    let mut decrypt_cipher = PasswordCipher::new(&encrypt_material, pbkdf_key, password_nonce);
-
+    let mut decrypt_cipher = PasswordCipher::new(&encrypted_payload, pbkdf_key, password_nonce);
     let mut decrypted_payload = Vec::new();
 
     loop {

@@ -9,32 +9,49 @@ use sha3::{
 
 pub const PBKDF_DEFAULT_ITERS: u32 = 10;
 
-pub fn pbkdf(password: &[u8], salt: &[u8], iters: u32) -> PkdfKey {
+pub fn pbkdf(password: &[u8], salt: &[u8], iters: u32, domain_info: &str) -> PkdfKey {
     let mut state = EMPTY_PBKDF_KEY;
     let mut h = Shake256::default();
     h.update(password);
     h.update(salt);
+
     h.finalize_xof().read(&mut state);
     for _ in 0..iters {
         let mut h = Shake256::default();
         h.update(&state);
+        h.update(domain_info.as_bytes());
         h.finalize_xof().read(&mut state);
     }
     state
 }
 
-pub fn salted_pbkdf(password: &[u8], salt: &[u8]) -> PkdfKey {
-    pbkdf(password, salt, PBKDF_DEFAULT_ITERS)
+pub fn pbkdf_with_salted_and_domain(password: &[u8], salt: &[u8], domain_info: &str) -> PkdfKey {
+    pbkdf(password, salt, PBKDF_DEFAULT_ITERS, domain_info)
+}
+
+pub fn pbkdf_with_salt_and_iters(password: &[u8], salt: &[u8], iters: u32) -> PkdfKey {
+    pbkdf(password, salt, iters, "")
+}
+
+pub fn pbkdf_with_domain_and_iters(password: &[u8], domain_info: &str, iters: u32) -> PkdfKey {
+    pbkdf(password, b"", iters, domain_info)
+}
+
+pub fn pbkdf_with_salt(password: &[u8], salt: &[u8]) -> PkdfKey {
+    pbkdf(password, salt, PBKDF_DEFAULT_ITERS, "")
+}
+
+pub fn pbkdf_with_domain(password: &[u8], domain_info: &str) -> PkdfKey {
+    pbkdf(password, b"", PBKDF_DEFAULT_ITERS, domain_info)
 }
 
 pub fn pbkdf_with_iters(password: &[u8], iters: u32) -> PkdfKey {
-    pbkdf(password, b"", iters)
+    pbkdf(password, b"", iters, "")
 }
 
-pub fn simple_pbkdf(password: &[u8]) -> PkdfKey {
-    pbkdf(password, b"", PBKDF_DEFAULT_ITERS)
+pub fn pbkdf_simple(password: &[u8]) -> PkdfKey {
+    pbkdf(password, b"", PBKDF_DEFAULT_ITERS, "")
 }
-
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //
 // Licensed under the Apache License, Version 2.0 (the License);

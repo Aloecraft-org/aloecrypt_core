@@ -29,7 +29,7 @@ pub fn to_encrypted_byte_size(unencrypted_byte_size: u64) -> u64 {
     let chunk_sz = PASSWORD_CIPHER_CHUNK_SZ as u64;
     let tag_sz = ENCRYPTED_TAG_SZ as u64;
     let num_chunks = (unencrypted_byte_size + chunk_sz - 1) / chunk_sz;
-    unencrypted_byte_size + (num_chunks * tag_sz)
+    num_chunks * (chunk_sz + tag_sz)
 }
 
 pub fn to_unencrypted_byte_size(encrypted_byte_size: u64) -> u64 {
@@ -178,7 +178,7 @@ pub fn password_decrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Decryp
         key: cipher.key,
         nonce: cipher.nonce,
         counter: cipher.counter,
-        n_bytes: cipher.n_bytes,
+        n_bytes: to_unencrypted_byte_size(data.len() as u64),
         chunk_sz: cipher.chunk_sz,
     };
 

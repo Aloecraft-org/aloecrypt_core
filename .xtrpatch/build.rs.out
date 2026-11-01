@@ -1,0 +1,3 @@
+📄 build.rs                                 ✅ SUCCESS (Δ+63 lines)
+   1. ✅ @ generate_functions is a s...   [Rep: 8, New: 56, Δ+48]
+   2. ✅ @ In generate_traits, emit ...   [Rep: 9, New: 24, Δ+15]

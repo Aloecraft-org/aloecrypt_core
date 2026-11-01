@@ -737,17 +737,53 @@
                 "name": "pbkdf",
                 "description": "Derives a 32-byte symmetric key from a password and salt using a password-based key derivation function with an explicit iteration count. Higher iteration counts increase resistance to brute-force attacks at the cost of derivation time.",
                 "params": [
-                    {"name": "password", "description": "The user-supplied password bytes to derive from."},
-                    {"name": "salt",     "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
-                    {"name": "iters",    "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
+                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the password context"},
+                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
                 ]
             },
             {
-                "name": "salted_pbkdf",
+                "name": "pbkdf_with_salted_and_domain",
+                "description": "Derives a 32-byte symmetric key from a password",
+                "params": [
+                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
+                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the password context"}
+                ]
+            },
+            {
+                "name": "pbkdf_with_salt_and_iters",
+                "description": "Derives a 32-byte symmetric key from a password",
+                "params": [
+                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
+                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
+                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                ]
+            },
+            {
+                "name": "pbkdf_with_domain_and_iters",
+                "description": "Derives a 32-byte symmetric key from a password",
+                "params": [
+                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the password context"},
+                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                ]
+            },
+            {
+                "name": "pbkdf_with_salt",
                 "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."},
                     {"name": "salt",     "description": "A per-credential random salt."}
+                ]
+            },
+            {
+                "name": "pbkdf_with_domain",
+                "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
+                "params": [
+                    {"name": "password", "description": "The user-supplied password bytes."},
+                    {"name": "domain_info", "description": "Domain separation string identifying the password context"}
                 ]
             },
             {
@@ -759,7 +795,7 @@
                 ]
             },
             {
-                "name": "simple_pbkdf",
+                "name": "pbkdf_simple",
                 "description": "Derives a 32-byte key from a password using library defaults for both salt and iteration count. Provided for convenience in low-security or testing contexts; prefer salted_pbkdf or pbkdf in production.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."}
@@ -974,7 +1010,15 @@
                     {"name" : "to_uri", "description" : "", "params" : [ ] },
                     {"name" : "generate",    "description" : "", "params" : [ 
                         {"name": "current", "description" : "totp time or hotp counter (DOES NOT INCREMENR HOTP COUNTER!)"}
-                    ]}
+                    ]},
+                    { "name": "with_counter",      "description": "", "params": [ {"name":"counter",      "description": ""} ]},
+                    { "name": "with_period",       "description": "", "params": [ {"name":"period",       "description": ""} ]},
+                    { "name": "with_t0",           "description": "", "params": [ {"name":"t0",           "description": ""} ]},
+                    { "name": "with_secret",       "description": "", "params": [ {"name":"secret",       "description": ""} ]},
+                    { "name": "with_algorithm",    "description": "", "params": [ {"name":"algorithm",    "description": ""} ]},
+                    { "name": "with_issuer",       "description": "", "params": [ {"name":"issuer",       "description": ""} ]},
+                    { "name": "with_account_name", "description": "", "params": [ {"name":"account_name", "description": ""} ]},
+                    { "name": "with_label",        "description": "", "params": [ {"name":"label",        "description": ""} ]}
                 ]
             }
         ],

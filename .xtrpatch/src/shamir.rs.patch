@@ -1,0 +1,230 @@
+--- a/src/shamir.rs
+@ Remove ShamirSecret struct
+<<<< 10:21
+#[derive(Clone, Copy)]
+pub struct ShamirSecret {
+    pub location : u8,
+    pub secret : VarByte255,
+}
+
+impl ShamirSecret {
+    fn empty()-> Self {
+        Self { location: 0u8, secret: VarByte255::empty() }
+    }
+}
+
+====
+====
+fn _check_nonzero_unique(arr:&[u8]) -> bool {
+>>>>
+
+--- a/src/shamir.rs
+@ Update share creation macro signatures
+<<<< 38:41
+            pub fn $name(secret: VarByte255, threshold: u8, seed: RngSeed) -> [ShamirSecret; $n] {
+                let mut coef_buf = [[0u8; MAX_VARIANTS]; MAX_SECRET_LEN];
+                let mut secret_buf = [ShamirSecret::empty(); $n];
+                let mut location_buf = [0u8; $n];
+====
+            pub fn $name(secret: VarByte255, threshold: u8, seed: RngSeed) -> [VarByte255; $n] {
+                let mut coef_buf = [[0u8; MAX_VARIANTS]; MAX_SECRET_LEN];
+                let mut secret_buf = [VarByte255::empty(); $n];
+                let mut location_buf = [0u8; $n];
+>>>>
+
+--- a/src/shamir.rs
+@ Prepend location to the VarByte255 array
+<<<< 49:56
+                let secret_len = secret.to_byte_arr().len() as u8;
+                for i in 0..$n {
+                    secret_buf[i].location = location_buf[i];
+                    secret_buf[i].secret.value[0] = secret_len;
+                }
+                _create_n_shares(secret, threshold, rng, coef_buf, &mut secret_buf);
+                secret_buf
+            }
+====
+                let secret_len = secret.to_byte_arr().len() as u8;
+                for i in 0..$n {
+                    secret_buf[i].value[0] = secret_len + 1;
+                    secret_buf[i].value[1] = location_buf[i];
+                }
+                _create_n_shares(secret, threshold, rng, coef_buf, &mut secret_buf, &location_buf);
+                secret_buf
+            }
+>>>>
+
+--- a/src/shamir.rs
+@ Update _create_n_shares signature
+<<<< 78:84
+fn _create_n_shares(
+    secret: VarByte255,
+    threshold: u8,
+    mut rng: AloeRng, 
+    mut coef_buf: [[u8; MAX_VARIANTS]; MAX_SECRET_LEN],
+    mut secret_buf: &mut [ShamirSecret]
+) {
+====
+fn _create_n_shares(
+    secret: VarByte255,
+    threshold: u8,
+    mut rng: AloeRng, 
+    mut coef_buf: [[u8; MAX_VARIANTS]; MAX_SECRET_LEN],
+    secret_buf: &mut [VarByte255],
+    location_buf: &[u8]
+) {
+>>>>
+
+--- a/src/shamir.rs
+@ Shift payload generation down by 1 byte to accommodate location
+<<<< 88:99
+        for secret_idx in 0..n_shares {
+            let x = secret_buf[secret_idx].location;
+
+            let mut y: u8 = if threshold > 1 { coef_buf[byte_idx][(threshold - 2) as usize] } else { 0 };
+            if threshold > 2 {
+                for i in (0..(threshold - 2) as usize).rev() {
+                    y = gf256_add(gf256_mul(y, x), coef_buf[byte_idx][i]);
+                }
+            }
+            y = gf256_add(gf256_mul(y, x), secret_bytes[byte_idx]);
+            secret_buf[secret_idx].secret.value[byte_idx + 1] = y;
+        }
+====
+        for secret_idx in 0..n_shares {
+            let x = location_buf[secret_idx];
+
+            let mut y: u8 = if threshold > 1 { coef_buf[byte_idx][(threshold - 2) as usize] } else { 0 };
+            if threshold > 2 {
+                for i in (0..(threshold - 2) as usize).rev() {
+                    y = gf256_add(gf256_mul(y, x), coef_buf[byte_idx][i]);
+                }
+            }
+            y = gf256_add(gf256_mul(y, x), secret_bytes[byte_idx]);
+            secret_buf[secret_idx].value[byte_idx + 2] = y;
+        }
+>>>>
+
+--- a/src/shamir.rs
+@ Refactor combination logic to read location from index 1 of VarByte255 array
+<<<< 103:108
+pub fn combine_shamir_shares(shares: &[ShamirSecret]) -> VarByte255 {
+    let n = shares.len();
+    let secret_len = shares[0].secret.value[0] as usize;
+    let mut result = VarByte255::empty();
+    result.value[0] = secret_len as u8;
+
+====
+pub fn combine_shamir_shares(shares: &[VarByte255]) -> VarByte255 {
+    let n = shares.len();
+    let share_len = shares[0].value[0] as usize;
+    let secret_len = share_len - 1;
+    let mut result = VarByte255::empty();
+    result.value[0] = secret_len as u8;
+
+>>>>
+
+--- a/src/shamir.rs
+@ Refactor Lagrange logic offsets
+<<<< 117:127
+                let xi = shares[i].location;
+                let xj = shares[j].location;
+
+                // Formula for L_i(0): product of (xj / (xj XOR xi))
+                let denominator = gf256_add(xj, xi);
+                let fraction = gf256_mul(xj, gf256_inv(denominator));
+                li = gf256_mul(li, fraction);
+            }
+            
+            let yi = shares[i].secret.value[byte_idx + 1];
+            secret_byte = gf256_add(secret_byte, gf256_mul(yi, li));
+====
+                let xi = shares[i].value[1];
+                let xj = shares[j].value[1];
+
+                // Formula for L_i(0): product of (xj / (xj XOR xi))
+                let denominator = gf256_add(xj, xi);
+                let fraction = gf256_mul(xj, gf256_inv(denominator));
+                li = gf256_mul(li, fraction);
+            }
+            
+            let yi = shares[i].value[byte_idx + 2];
+            secret_byte = gf256_add(secret_byte, gf256_mul(yi, li));
+>>>>
+
+--- a/src/bin/shamir.rs
+@ Expand tests for exactly-threshold and surplus configurations
+<<<< 5:42
+fn main() {
+    // 1. Setup the secret
+    let original_data = b"Keep it secret, keep it safe.";
+    let secret = VarByte255::from_byte_arr(original_data);
+    
+    // 2. Setup the split parameters (3-of-5)
+    let threshold = 3;
+    let seed = [0u8; 32]; // In production, use a real CSPRNG seed
+    
+    println!("Original Secret: {:?}", String::from_utf8_lossy(original_data));
+    println!("--------------------------------------------------");
+
+    // 3. Create the shares
+    let shares = create_5_shamir_shares(secret, threshold, seed);
+    
+    for (i, share) in shares.iter().enumerate() {
+        println!("Share {}: (Location: {}) Data: {:02x?}", i + 1, share.location, share.secret.to_byte_arr());
+    }
+    println!("--------------------------------------------------");
+
+    // 4. Test Recovery with exactly the threshold (3 shares)
+    // We'll intentionally take shares 0, 2, and 4 (skipping 1 and 3)
+    let recovery_subset = [shares[0].clone(), shares[2].clone(), shares[4].clone()];
+    
+    println!("Attempting recovery with 3 shares...");
+    let recovered_secret = combine_shamir_shares(&recovery_subset);
+    let recovered_data = recovered_secret.to_byte_arr();
+
+    // 5. Verify
+    println!("Recovered: {:?}", String::from_utf8_lossy(recovered_data));
+    
+    if recovered_data == original_data {
+        println!("SUCCESS: Secret reconstructed perfectly!");
+    } else {
+        println!("FAILURE: Reconstruction failed.");
+    }
+}
+====
+fn main() {
+    let original_data = b"Keep it secret, keep it safe.";
+    let secret = VarByte255::from_byte_arr(original_data);
+    
+    let threshold = 3;
+    let seed = [0xAA; 32]; // Pseudo-random seed for test
+    
+    println!("Original Secret: {:?}", String::from_utf8_lossy(original_data));
+    println!("--------------------------------------------------");
+
+    let shares = create_5_shamir_shares(secret, threshold, seed);
+    
+    for (i, share) in shares.iter().enumerate() {
+        let len = share.value[0] as usize;
+        let loc = share.value[1];
+        let data = &share.value[2..1 + len];
+        println!("Share {}: (Location: {}) Data: {:02x?}", i + 1, loc, data);
+    }
+    println!("--------------------------------------------------");
+
+    // Test exactly 3 shares
+    println!("Attempting recovery with exactly 3 shares...");
+    let recovery_3 = [shares[0], shares[2], shares[4]];
+    let recovered_secret_3 = combine_shamir_shares(&recovery_3);
+    assert_eq!(recovered_secret_3.to_byte_arr(), original_data);
+    println!("SUCCESS: 3-share secret reconstructed perfectly!\n");
+
+    // Test surplus shares
+    println!("Attempting recovery with surplus (4) shares...");
+    let recovery_4 = [shares[0], shares[1], shares[3], shares[4]];
+    let recovered_secret_4 = combine_shamir_shares(&recovery_4);
+    assert_eq!(recovered_secret_4.to_byte_arr(), original_data);
+    println!("SUCCESS: 4-share secret reconstructed perfectly!");
+}
+>>>>

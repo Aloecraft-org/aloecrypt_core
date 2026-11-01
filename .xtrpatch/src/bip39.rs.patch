@@ -1,0 +1,109 @@
+--- a/src/bip39.rs
+@ Remove BIP39Encoded struct
+<<<< 5:9
+pub struct BIP39Encoded {
+    pub len : u8,
+    pub buf : [u16; 255],
+}
+====
+>>>>
+
+--- a/src/bip39.rs
+@ Update to_bip39 to return VarU16_255
+<<<< 10:33
+pub fn to_bip39(data: &[u8]) -> BIP39Encoded {
+    // Trust the caller right now for simplicity
+    assert!(data.len() % 4 == 0);
+    let len = (3 * data.len() / 4) as u8;
+    let mut buf = [0u16;255];
+
+    let hash = Sha256::digest(data);
+    for i in 0..len as usize {
+        let mut index = 0u16;
+        for j in 0..11 {
+            let bit_pos = i * 11 + j;
+            let bit = if bit_pos < data.len() * 8 {
+                (data[bit_pos / 8] >> (7 - (bit_pos % 8))) & 1
+            } else {
+                let cs_pos = bit_pos - data.len() * 8;
+                (hash[cs_pos / 8] >> (7 - (cs_pos % 8))) & 1
+            };
+            index = (index << 1) | (bit as u16);
+        }
+        buf[i] = index;
+    }
+    BIP39Encoded{len, buf}
+}
+====
+pub fn to_bip39(data: &[u8]) -> VarU16_255 {
+    // Trust the caller right now for simplicity
+    assert!(data.len() % 4 == 0);
+    let len = (3 * data.len() / 4) as usize;
+    let mut buf = [0u16;255];
+
+    let hash = Sha256::digest(data);
+    for i in 0..len {
+        let mut index = 0u16;
+        for j in 0..11 {
+            let bit_pos = i * 11 + j;
+            let bit = if bit_pos < data.len() * 8 {
+                (data[bit_pos / 8] >> (7 - (bit_pos % 8))) & 1
+            } else {
+                let cs_pos = bit_pos - data.len() * 8;
+                (hash[cs_pos / 8] >> (7 - (cs_pos % 8))) & 1
+            };
+            index = (index << 1) | (bit as u16);
+        }
+        buf[i] = index;
+    }
+    VarU16_255::from_u16_arr(&buf[..len])
+}
+>>>>
+
+--- a/src/bip39.rs
+@ Implement from_bip39_mnemonic using VarU16_255
+<<<< 76:81
+pub fn from_bip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
+    let mut out = VarU16_255::empty();
+    // GEMINI: Your Implementation Here
+    out
+}
+====
+pub fn from_bip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
+    let mut arr = [0u16; 255];
+    let mut len = 0;
+    for word in mnemonic.to_str().split(' ') {
+        if let Some(idx) = BIP39_WORDLIST.iter().position(|&w| w == word) {
+            arr[len] = idx as u16;
+            len += 1;
+        }
+    }
+    VarU16_255::from_u16_arr(&arr[..len])
+}
+>>>>
+
+--- a/src/bin/bip39.rs
+@ Update main to use VarU16_255 array extraction
+<<<< 21:31
+    #[cfg(feature = "bip39_words")]
+    let mnemonic = to_bip39_mnemonic(&encoded.buf[..encoded.len as usize]);
+
+    #[cfg(feature = "bip39_words")]
+    println!("Mnemonic: {}", mnemonic.to_str());
+
+    #[cfg(not(feature = "bip39_words"))]
+    println!("Enable feature `bip39_words` to print mnemonic");
+    
+    let decoded = from_bip39(&encoded.buf[..encoded.len as usize]);
+====
+    #[cfg(feature = "bip39_words")]
+    let mnemonic = to_bip39_mnemonic(encoded.to_u16_arr());
+
+    #[cfg(feature = "bip39_words")]
+    println!("Mnemonic: {}", mnemonic.to_str());
+
+    #[cfg(not(feature = "bip39_words"))]
+    println!("Enable feature `bip39_words` to print mnemonic");
+    
+    let decoded = from_bip39(encoded.to_u16_arr());
+>>>>

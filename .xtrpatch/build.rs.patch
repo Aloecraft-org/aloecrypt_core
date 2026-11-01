@@ -1,0 +1,108 @@
+--- a/build.rs
+@ generate_functions is a stub - implement it with docstrings like generate_traits
+<<<< 54:61
+fn generate_functions(out: &mut File, value: &serde_json::Value, namespace: &str) {
+    let indent = "    ";
+    if let Some(items) = value.as_array() {
+        for entry in items {
+            // writeln!(out, "{}pub const {} : usize = {};" , indent, entry["name"], entry["value"]);
+        }
+    }
+}
+====
+fn generate_functions(out: &mut File, value: &serde_json::Value, namespace: &str) {
+    let indent = "    ";
+    if let Some(items) = value.as_array() {
+        for entry in items {
+            let mut return_str = String::new();
+
+            if let Some(description) = entry.get("description") {
+                writeln!(out, "{}/// {}", indent, description.as_str().unwrap()).unwrap();
+            }
+
+            let param_str = match entry["params"].as_array() {
+                Some(params) => params
+                    .iter()
+                    .filter(|p| !p["name"].as_str().unwrap_or("").is_empty())
+                    .map(|p| {
+                        format!(
+                            "{}: {}",
+                            p["name"].as_str().unwrap(),
+                            p["type"].as_str().unwrap()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                _ => String::new(),
+            };
+
+            // Emit @param lines for each parameter that has a description
+            if let Some(params) = entry["params"].as_array() {
+                for p in params {
+                    if let Some(pdesc) = p.get("description") {
+                        writeln!(
+                            out,
+                            "{}/// * `{}` - {}",
+                            indent,
+                            p["name"].as_str().unwrap(),
+                            pdesc.as_str().unwrap()
+                        ).unwrap();
+                    }
+                }
+            }
+
+            if let Some(return_val) = entry.get("return") {
+                return_str = format!(" -> {}", return_val.as_str().unwrap());
+            }
+
+            writeln!(
+                out,
+                "{}pub fn {}({}){};",
+                indent,
+                entry["name"].as_str().unwrap(),
+                param_str,
+                return_str,
+            ).unwrap();
+        }
+    }
+}
+>>>>
+
+--- a/build.rs
+@ In generate_traits, emit param descriptions as /// * `name` - desc lines after the function doc comment
+<<<< 206:214
+                        if let Some(function_description) = function.get("description") {
+                            writeln!(
+                                out,
+                                "{}    /// {}",
+                                indent,
+                                function_description.as_str().unwrap()
+                            )
+                            .unwrap();
+                        }
+====
+                        if let Some(function_description) = function.get("description") {
+                            writeln!(
+                                out,
+                                "{}    /// {}",
+                                indent,
+                                function_description.as_str().unwrap()
+                            )
+                            .unwrap();
+                        }
+
+                        // Emit param descriptions as doc comment lines
+                        if let Some(params) = function["params"].as_array() {
+                            for p in params {
+                                if let Some(pdesc) = p.get("description") {
+                                    writeln!(
+                                        out,
+                                        "{}    /// * `{}` - {}",
+                                        indent,
+                                        p["name"].as_str().unwrap(),
+                                        pdesc.as_str().unwrap()
+                                    ).unwrap();
+                                }
+                            }
+                        }
+>>>>

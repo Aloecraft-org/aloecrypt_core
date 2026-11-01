@@ -1,0 +1,66 @@
+--- a/src/otp.rs
+@ Implement from_string
+<<<< 57
+    fn from_string(input_str: &str) -> Self {
+        OtpCredential::empty()
+    }
+====
+    fn from_string(input_str: &str) -> Self {
+        // Max length check on raw input
+        let input_str = input_str.trim();
+        if input_str.len() > 255 {
+            return OtpCredential::invalid("input exceeds 255 characters", input_str);
+        }
+
+        // Normalize scheme to lowercase for comparison, preserving rest
+        // We need case-insensitive scheme match but the url crate is case-sensitive
+        let normalized = {
+            if let Some(rest) = input_str.strip_prefix_ci("otpauth://") {
+                // We'll do this manually below
+                let _ = rest;
+                format!("otpauth://{}", &input_str[input_str.find("://").unwrap() + 3..])
+            } else {
+                input_str.to_string()
+            }
+        };
+
+        // Determine which parsing branch we're in by inspecting the trimmed input
+        let s = input_str;
+
+        // --- Branch 1: bare base32 (no '/', no '?', no ':') ---
+        // A bare base32 string contains only [A-Za-z2-7=] characters
+        let is_bare_base32 = s.chars().all(|c| matches!(c,
+            'A'..='Z' | 'a'..='z' | '2'..='7' | '='
+        ));
+        if is_bare_base32 {
+            return parse_secret_only(s, OtpTypeEnum::TOTP);
+        }
+
+        // --- Branch 2: totp/SECRET or hotp/SECRET shorthand ---
+        // Form: `totp/<base32>[?params]` or `hotp/<base32>[?params]`
+        // No leading `//` or scheme
+        if let Some(otp_type) = shorthand_type_prefix(s) {
+            let rest = &s[s.find('/').unwrap() + 1..];
+            return parse_shorthand(rest, otp_type, s);
+        }
+
+        // --- Branch 3: //totp/... shorthand, prepend otpauth: ---
+        let full_uri: String;
+        let uri_str: &str = if let Some(rest) = s.strip_prefix("//") {
+            full_uri = format!("otpauth:{}", s);
+            &full_uri
+        } else {
+            // --- Branch 4: full otpauth:// URI (case-insensitive scheme) ---
+            // Lowercase only the scheme portion
+            let lower = s.to_ascii_lowercase();
+            if !lower.starts_with("otpauth://") {
+                return OtpCredential::invalid("invalid protocol string", s);
+            }
+            // Reconstruct with lowercase scheme, original-case rest
+            full_uri = format!("otpauth://{}", &s["otpauth://".len()..]);
+            &full_uri
+        };
+
+        parse_full_uri(uri_str, s)
+    }
+>>>>

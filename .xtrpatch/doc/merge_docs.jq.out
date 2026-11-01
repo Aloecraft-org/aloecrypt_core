@@ -1,0 +1,3 @@
+📄 doc/merge_docs.jq                        ✅ SUCCESS (Δ+15 lines)
+   1. ✅ @ Adds merge_enum function ...   [Rep: 3, New: 18, Δ+15]
+   2. ✅ @ Updates merge_module to u...   [Rep: 3, New: 3, Δ+0]

@@ -42,17 +42,27 @@ impl MlKem512Encapsulator {
     fn _encapsulation_key(&self) -> EncapsulationKey<MlKem512> {
         EncapsulationKey::<MlKem512>::new(&self.public_key.into()).unwrap()
     }
+
+    pub fn from_public_key(public_key : &MlKem512Pubkey) -> Self {
+        MlKem512Encapsulator { public_key: public_key.clone() }
+    }
 }
 
 impl MlKem768Encapsulator {
     fn _encapsulation_key(&self) -> EncapsulationKey<MlKem768> {
         EncapsulationKey::<MlKem768>::new(&self.public_key.into()).unwrap()
     }
+    pub fn from_public_key(public_key : &MlKem768Pubkey) -> Self {
+        MlKem768Encapsulator { public_key: public_key.clone() }
+    }
 }
 
 impl MlKem1024Encapsulator {
     fn _encapsulation_key(&self) -> EncapsulationKey<MlKem1024> {
         EncapsulationKey::<MlKem1024>::new(&self.public_key.into()).unwrap()
+    }
+    pub fn from_public_key(public_key : &MlKem1024Pubkey) -> Self {
+        MlKem1024Encapsulator { public_key: public_key.clone() }
     }
 }
 

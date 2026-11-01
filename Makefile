@@ -14,6 +14,7 @@ echo:
 
 generate:
 	@python3 ./generator/gen_py.py
+	@python3 ./generator/gen_ts.py
 
 build:
 	@cargo build --profile release

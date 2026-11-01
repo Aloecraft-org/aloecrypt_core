@@ -1,0 +1,14 @@
+--- a/src/slip39.rs
+@ Update length to include checksum
+<<<< 37:41
+    data_words.value[(data_len*2 + 4) as usize..(data_len*2 + 6) as usize].copy_from_slice(&checksum[1].to_le_bytes());
+    data_words.value[(data_len*2 + 6) as usize..(data_len*2 + 8) as usize].copy_from_slice(&checksum[2].to_le_bytes());
+    data_words
+}
+====
+    data_words.value[(data_len*2 + 4) as usize..(data_len*2 + 6) as usize].copy_from_slice(&checksum[1].to_le_bytes());
+    data_words.value[(data_len*2 + 6) as usize..(data_len*2 + 8) as usize].copy_from_slice(&checksum[2].to_le_bytes());
+    data_words.value[0] += 3;
+    data_words
+}
+>>>>

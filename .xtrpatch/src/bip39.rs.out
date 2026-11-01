@@ -1,0 +1,4 @@
+📄 src/bip39.rs                             ✅ SUCCESS (Δ+2 lines)
+   1. ✅ @ Remove BIP39Encoded struct     [Rep: 4, New: 0, Δ-4]
+   2. ✅ @ Update to_bip39 to return...   [Rep: 23, New: 23, Δ+0]
+   3. ✅ @ Implement from_bip39_mnem...   [Rep: 5, New: 11, Δ+6]
