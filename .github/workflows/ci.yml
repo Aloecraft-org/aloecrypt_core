@@ -259,6 +259,33 @@ jobs:
           print("wire status prefix: decode, raise, short-reply and truncated-Ok paths all pass")
           EOF
 
+  # The technoproj release standard: version.mk, the changelog and the
+  # release workflow cannot drift off it. Pinned to the same engine as
+  # release.yml.
+  technoproj:
+    name: technoproj
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install technoproj
+        run: pip install "git+https://github.com/Aloecraft-org/technoproj@v0.4.1"
+      - name: version.mk
+        run: technoproj check
+      - name: changelog
+        run: |
+          technoproj-changelog validate
+          technoproj-changelog check
+          technoproj-changelog consistency
+      - name: release workflow
+        run: technoproj release check-workflow
+      - name: release preflight
+        run: technoproj release preflight
+
   # The TypeScript bindings must type-check under --strict and decode the
   # status prefix the same way the Python ones do.
   codegen-ts:

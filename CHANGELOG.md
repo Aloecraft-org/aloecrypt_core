@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to aloecrypt_core are recorded here.
+
+Generated from `CHANGELOG.yaml`, which is the source of truth --
+edit that file, then run `technoproj-changelog generate`.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [0.1.0] - unreleased (prerelease)
+
+`v0.1.0`
+
+The first release. A no_std post-quantum cryptography library: ML-DSA
+signatures and ML-KEM key encapsulation, with the hashing, key
+derivation, recovery and one-time-password pieces a consumer needs
+around them. It builds with no_std and no host entropy source for
+wasm32 and the Cortex-M targets, and every API is described by one
+schema that also generates the Python and TypeScript bindings.
+
+### Added
+
+- ML-DSA-44/65/87 signing and verification, decomposed to bound peak stack for the RP2350.
+- ML-KEM-512/768/1024 encapsulation.
+- SHA-3 and SHAKE hashing, a seeded ChaCha RNG, and a password KDF (Argon2id) in a host profile and a stack-only embedded profile.
+- Shamir secret sharing with BIP-39 and SLIP-39 encodings; the wordlists are opt-in features.
+- HOTP and TOTP per RFC 4226 and RFC 6238, with otpauth URI parsing and writing.
+- A document layer with armored transport, detached signatures and encrypt-to-recipient.
+- Generated Python and TypeScript bindings. Every export returns a 2-byte status code ahead of its payload.
+
+### Known issues
+
+- Multi-recipient encryption and the struct-level canonical signing
+  bytes guarantee are not built yet. Key material is not zeroized on
+  drop.

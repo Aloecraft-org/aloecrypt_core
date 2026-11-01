@@ -1,0 +1,106 @@
+name: Release
+
+# The technoproj release contract (Aloecraft-org/technoproj, doc/STANDARD.md
+# Part 2). Preflight and publish are the shared workflows; only the build job
+# is this repository's own.
+#
+# Start a release with
+#
+#   technoproj release cut --tag v0.1.0 --publish --yes
+#
+# or the Actions tab -> Release -> Run workflow. The publish job creates the
+# tag; do not push `v*` tags by hand. A run with publish off is a rehearsal:
+# every gate and build, artifacts left on the run, nothing published.
+
+on:
+  push:
+    # A merge to main cuts a `-dev.<n>` prerelease (TECHNO_RELEASE.dev_builds).
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit, branch or tag to release (blank = this branch)"
+        type: string
+        required: false
+        default: ""
+      tag:
+        description: "Tag name, e.g. v0.1.0. Required when publishing."
+        type: string
+        required: false
+        default: ""
+      publish:
+        description: "Publish. Leave off for a rehearsal."
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  preflight:
+    uses: Aloecraft-org/technoproj/.github/workflows/release-preflight.yml@v0.4.1
+    with:
+      ref: ${{ inputs.ref }}
+      tag: ${{ inputs.tag }}
+      publish: ${{ inputs.publish || false }}
+      technoproj: v0.4.1
+
+  # The crate is a library, so a release ships its source package and the
+  # bindings generated from the schema. The tests run here too, so a release
+  # is not a way around them.
+  build:
+    name: Build
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: test
+        run: cargo test && cargo test --no-default-features
+      - name: package the crate
+        run: |
+          cargo package --no-verify
+          mkdir -p out
+          cp target/package/aloecrypt_core-*.crate out/
+      - name: generate bindings
+        run: |
+          pip install pydantic
+          make generate
+          cp .generated/gen_py/aloecrypt_core.py out/
+          cp .generated/gen_ts/aloecrypt_core.ts out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-aloecrypt_core
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [preflight, build]
+    if: needs.preflight.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: Aloecraft-org/technoproj/.github/workflows/release-publish.yml@v0.4.1
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}
+      sha: ${{ needs.preflight.outputs.sha }}
+      branch: ${{ needs.preflight.outputs.branch }}
+      version: ${{ needs.preflight.outputs.version }}
+      prerelease: ${{ needs.preflight.outputs.prerelease }}
+      name: aloecrypt_core ${{ needs.preflight.outputs.tag }}
+      artifacts: dist-*
+      keep-dev: 5
