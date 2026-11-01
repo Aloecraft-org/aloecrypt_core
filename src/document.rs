@@ -1,8 +1,10 @@
 // src/document.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 //
-// The document layer's transport: the extensible binary envelope and the
-// armored text encoding (doc/DESIGN.md sections 3 and 18). Everything here
+// The document layer: the extensible binary envelope and the armored text
+// encoding (doc/DESIGN.md sections 3 and 18), and the documents built on
+// them -- detached signatures (19), encrypt-to-recipient (20) and
+// public-key documents (21). Everything here
 // works over caller-provided buffers -- no allocator, no assumption about
 // where the bytes came from -- and every parse failure is a `StatusCode`.
 //
@@ -16,7 +18,8 @@
 use super::document_api::*;
 
 use crate::aloecrypt_api::{
-    ALOECRYPT_ADDRESS_SZ, AloecryptAddress, AloecryptAlgorithmEnum, ENCRYPTED_TAG_SZ,
+    ALOECRYPT_ADDRESS_SZ, AloecryptAddress, AloecryptAddressable, AloecryptAlgorithm,
+    AloecryptAlgorithmEnum, ENCRYPTED_TAG_SZ,
 };
 use crate::dsa_api::*;
 use crate::error::{AloecryptResult, StatusCodeEnum};
@@ -879,6 +882,256 @@ pub fn decrypt_as_recipient_1024(
     let secret = keypair.decapsulate(kem_cipher);
     let key = domain_hash(&secret, MLKEM_1024_ENCRYPT_DOMAIN);
     open_document(&reader, &key, out)
+}
+
+// ------------------------------------------------------ public-key documents
+//
+// A public-key document is an envelope (label SIGNER for ML-DSA, RECIPIENT
+// for ML-KEM when armored) holding exactly one PublicKey section, laid out
+// like an attestation or a recipient block:
+//
+//   alg u16 LE | address (32 bytes) | encoded public key
+//
+// The address is derivable from the key; carrying it lets a reader confirm
+// the key arrived intact and lets a consumer index the document without
+// re-hashing. The document is not signed: it moves a key between hosts, and
+// whether to trust that key is a decision for the certificate layer, not
+// for transport. Readers check, and report `BadEncoding` for, everything
+// they can: the algorithm the caller asked for, the key length, the address
+// against the key, the ML-KEM encapsulation-key check, and a second
+// PublicKey section, which would make "the key in this document" ambiguous.
+
+pub const SIGNER_LABEL: &str = "SIGNER";
+pub const RECIPIENT_LABEL: &str = "RECIPIENT";
+/// Algorithm id + address, ahead of the encoded key.
+const PUBLIC_KEY_VALUE_HEADER_SZ: usize = 2 + ALOECRYPT_ADDRESS_SZ;
+
+/// Bytes a public-key document occupies, given the algorithm's encoded key
+/// size (`MLDSA_44_PUBKEY_SZ`, `MLKEM_768_ENCAP_KEY_SZ` and friends).
+pub const fn public_key_document_size(pubkey_sz: usize) -> usize {
+    DOC_HEADER_SZ + DOC_SECTION_HEADER_SZ + PUBLIC_KEY_VALUE_HEADER_SZ + pubkey_sz
+}
+
+fn build_public_key(
+    alg: AloecryptAlgorithmEnum,
+    address: &AloecryptAddress,
+    key: &[u8],
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    let mut writer = EnvelopeWriter::new(out)?;
+    writer.add_parts(
+        SectionTagEnum::PublicKey as u16,
+        &[&(alg as u16).to_le_bytes(), address, key],
+    )?;
+    Ok(writer.finish())
+}
+
+/// The single PublicKey section's value, after the envelope-level checks.
+fn public_key_section(doc: &[u8]) -> AloecryptResult<&[u8]> {
+    let reader = EnvelopeReader::new(doc)?;
+    if reader.has_unknown_critical(&[]) {
+        return err(StatusCodeEnum::Unsupported);
+    }
+    let mut keys = reader
+        .sections()
+        .filter(|(tag, _)| *tag == SectionTagEnum::PublicKey as u16);
+    let Some((_, value)) = keys.next() else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    if keys.next().is_some() || value.len() < PUBLIC_KEY_VALUE_HEADER_SZ {
+        return err(StatusCodeEnum::BadEncoding);
+    }
+    Ok(value)
+}
+
+/// Which algorithm a public-key document carries, so a consumer holding
+/// one can choose the `read_signer_*` / `read_recipient_*` to call. Says
+/// nothing about whether the key itself is well formed -- the reader does.
+pub fn public_key_algorithm(doc: &[u8]) -> AloecryptResult<AloecryptAlgorithmEnum> {
+    let value = public_key_section(doc)?;
+    let alg: AloecryptAlgorithmEnum =
+        AloecryptAlgorithm(u16::from_le_bytes([value[0], value[1]])).into();
+    match alg {
+        AloecryptAlgorithmEnum::NoValue | AloecryptAlgorithmEnum::Invalid => {
+            err(StatusCodeEnum::Unsupported)
+        }
+        alg => Ok(alg),
+    }
+}
+
+/// The address and key bytes of a document carrying an `alg` key of
+/// `pubkey_sz` bytes. The caller checks the address against the key.
+fn parse_public_key(
+    doc: &[u8],
+    alg: AloecryptAlgorithmEnum,
+    pubkey_sz: usize,
+) -> AloecryptResult<(&[u8], &[u8])> {
+    let value = public_key_section(doc)?;
+    if u16::from_le_bytes([value[0], value[1]]) != alg as u16
+        || value.len() != PUBLIC_KEY_VALUE_HEADER_SZ + pubkey_sz
+    {
+        return err(StatusCodeEnum::BadEncoding);
+    }
+    Ok((
+        &value[2..PUBLIC_KEY_VALUE_HEADER_SZ],
+        &value[PUBLIC_KEY_VALUE_HEADER_SZ..],
+    ))
+}
+
+/// `Ok(key)` only if the carried address is the key's own.
+fn check_address<K>(key: K, carried: &[u8], derived: AloecryptAddress) -> AloecryptResult<K> {
+    if carried == &derived[..] {
+        Ok(key)
+    } else {
+        err(StatusCodeEnum::BadEncoding)
+    }
+}
+
+pub fn write_signer_44(verifier: &MlDsa44Verifier, out: &mut [u8]) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlDsa44,
+        &verifier.address(),
+        verifier.pack_bytes(),
+        out,
+    )
+}
+
+pub fn write_signer_65(verifier: &MlDsa65Verifier, out: &mut [u8]) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlDsa65,
+        &verifier.address(),
+        verifier.pack_bytes(),
+        out,
+    )
+}
+
+pub fn write_signer_87(verifier: &MlDsa87Verifier, out: &mut [u8]) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlDsa87,
+        &verifier.address(),
+        verifier.pack_bytes(),
+        out,
+    )
+}
+
+// An ML-DSA public key has no invalid encodings (t1 is ten-bit packed, every
+// pattern decodes), so the address check is the only key-level check.
+
+pub fn read_signer_44(doc: &[u8]) -> AloecryptResult<MlDsa44Verifier> {
+    let (address, key) =
+        parse_public_key(doc, AloecryptAlgorithmEnum::MlDsa44, MLDSA_44_PUBKEY_SZ)?;
+    let Ok(key) = <&MlDsa44Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let verifier = MlDsa44Verifier::from_public_key(key);
+    let derived = verifier.address();
+    check_address(verifier, address, derived)
+}
+
+pub fn read_signer_65(doc: &[u8]) -> AloecryptResult<MlDsa65Verifier> {
+    let (address, key) =
+        parse_public_key(doc, AloecryptAlgorithmEnum::MlDsa65, MLDSA_65_PUBKEY_SZ)?;
+    let Ok(key) = <&MlDsa65Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let verifier = MlDsa65Verifier::from_public_key(key);
+    let derived = verifier.address();
+    check_address(verifier, address, derived)
+}
+
+pub fn read_signer_87(doc: &[u8]) -> AloecryptResult<MlDsa87Verifier> {
+    let (address, key) =
+        parse_public_key(doc, AloecryptAlgorithmEnum::MlDsa87, MLDSA_87_PUBKEY_SZ)?;
+    let Ok(key) = <&MlDsa87Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let verifier = MlDsa87Verifier::from_public_key(key);
+    let derived = verifier.address();
+    check_address(verifier, address, derived)
+}
+
+pub fn write_recipient_512(
+    recipient: &MlKem512Encapsulator,
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlKem512,
+        &recipient.address(),
+        recipient.addressing_material(),
+        out,
+    )
+}
+
+pub fn write_recipient_768(
+    recipient: &MlKem768Encapsulator,
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlKem768,
+        &recipient.address(),
+        recipient.addressing_material(),
+        out,
+    )
+}
+
+pub fn write_recipient_1024(
+    recipient: &MlKem1024Encapsulator,
+    out: &mut [u8],
+) -> AloecryptResult<usize> {
+    build_public_key(
+        AloecryptAlgorithmEnum::MlKem1024,
+        &recipient.address(),
+        recipient.addressing_material(),
+        out,
+    )
+}
+
+pub fn read_recipient_512(doc: &[u8]) -> AloecryptResult<MlKem512Encapsulator> {
+    let (address, key) = parse_public_key(
+        doc,
+        AloecryptAlgorithmEnum::MlKem512,
+        MLKEM_512_ENCAP_KEY_SZ,
+    )?;
+    let Ok(key) = <&MlKem512Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let Some(recipient) = MlKem512Encapsulator::try_from_public_key(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let derived = recipient.address();
+    check_address(recipient, address, derived)
+}
+
+pub fn read_recipient_768(doc: &[u8]) -> AloecryptResult<MlKem768Encapsulator> {
+    let (address, key) = parse_public_key(
+        doc,
+        AloecryptAlgorithmEnum::MlKem768,
+        MLKEM_768_ENCAP_KEY_SZ,
+    )?;
+    let Ok(key) = <&MlKem768Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let Some(recipient) = MlKem768Encapsulator::try_from_public_key(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let derived = recipient.address();
+    check_address(recipient, address, derived)
+}
+
+pub fn read_recipient_1024(doc: &[u8]) -> AloecryptResult<MlKem1024Encapsulator> {
+    let (address, key) = parse_public_key(
+        doc,
+        AloecryptAlgorithmEnum::MlKem1024,
+        MLKEM_1024_ENCAP_KEY_SZ,
+    )?;
+    let Ok(key) = <&MlKem1024Pubkey>::try_from(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let Some(recipient) = MlKem1024Encapsulator::try_from_public_key(key) else {
+        return err(StatusCodeEnum::BadEncoding);
+    };
+    let derived = recipient.address();
+    check_address(recipient, address, derived)
 }
 
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>

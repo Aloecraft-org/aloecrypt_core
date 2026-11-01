@@ -261,6 +261,7 @@
                     {"name" : "AeadCipher",    "description": "AEAD-sealed bytes, including the authentication tag. Confidential payloads travel here instead of Payload."},
                     {"name" : "KdfSalt",       "description": "The salt a password-based derivation used. Stored so the key can be re-derived to open the document."},
                     {"name" : "KdfParams",     "description": "The password-derivation parameters (profile memory cost and pass count) the KdfSalt was used with, so a document is openable even when the deriving profile differs from the reading one."},
+                    {"name" : "PublicKey",     "description": "One public key, self-describing: the algorithm id (u16 LE), the key's 32-byte aloecrypt address, then the encoded key bytes. The body of a SIGNER (ML-DSA) or RECIPIENT (ML-KEM) document."},
                     {"name" : "Invalid",       "description": "Reserved sentinel at the top of the tag space. Never written; sits in the must-understand range by construction."}
                 ]
             }

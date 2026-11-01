@@ -16,7 +16,7 @@ layer grows into certificates, CSRs, and a tool usable in place of GPG.
 | Layer | Contents |
 |---|---|
 | Primitives | ML-KEM, ML-DSA, ChaCha20-Poly1305, Keccak/SHAKE, CSPRNG, Shamir / SLIP-39 / BIP-39, HOTP/TOTP |
-| Documents | Canonical bytes, extensible envelope, armored text, detached signatures, encrypt-to-recipient |
+| Documents | Canonical bytes, extensible envelope, armored text, detached signatures, encrypt-to-recipient, public-key documents |
 | Identity | Keys, delegation, claims, certificates, CSRs, revocation |
 | Entrypoints | Rust crate, CLI, native bindings, extism plugin |
 
@@ -305,7 +305,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-156 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+169 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 
@@ -729,6 +729,39 @@ traits in the schema. And as with signing, a pinned armored fixture
 is deterministic given the caller's PRK seed, so the fixture is re-derived
 byte-for-byte and decrypted.
 
+## 21. Public-key documents
+
+How a public key travels between hosts (a kv store, a JWKS-like endpoint,
+a file) without each consumer inventing a format — previously the only
+option was bare base64 with the algorithm inferred from the length.
+
+**One PublicKey section (tag 50), shaped like an attestation**: algorithm
+id, the key's 32-byte address, the encoded key. Armored under `SIGNER` for
+ML-DSA and `RECIPIENT` for ML-KEM. `write_signer_*` / `read_signer_*` and
+`write_recipient_*` / `read_recipient_*` return a verifier or encapsulator
+ready for `verify_detached_*` and `encrypt_to_recipient_*`;
+`public_key_algorithm` names the parameter set first, for a consumer that
+must choose which reader to call.
+
+**The address rides along although it is derivable.** The reader
+recomputes it and refuses a mismatch, which catches a key altered in
+transit, and a consumer can index a document by address without hashing.
+It is not authentication: the document is unsigned on purpose. Whether to
+trust a key is the certificate layer's question; a public-key document
+only moves one intact.
+
+**The reader refuses everything it can as `BadEncoding`**: an algorithm
+other than the one asked for, a wrong key length, an address mismatch, a
+second PublicKey section ("the key in this document" must be unambiguous),
+and an ML-KEM key failing FIPS 203's encapsulation-key check. The last
+matters: `encapsulate` panics on such a key, so foreign bytes reach an
+encapsulator only through `try_from_public_key`. ML-DSA public keys have
+no invalid encodings, so they need no equivalent. An unknown critical
+section is `Unsupported`, as everywhere else.
+
+Pinned armored fixtures (`tests/fixtures/signer_44.asc`,
+`recipient_768.asc`) are re-derived byte-for-byte and read back.
+
 ## Next
 
 In rough order of value, and roughly independent of each other:
@@ -741,7 +774,8 @@ In rough order of value, and roughly independent of each other:
 3. ~~Remove `Copy` from key structs~~ — **done**, section 15. The zeroize
    wipe itself is still open and belongs to the identity layer's type split.
 4. **The document layer** (section 3) — transport (section 18), detached
-   signatures (section 19) and encrypt-to-recipient (section 20) **done**.
+   signatures (section 19), encrypt-to-recipient (section 20) and
+   public-key documents (section 21) **done**.
    Remaining: multi-recipient encryption (the wrapped content key, section
    20), and the struct-level canonical-signing-bytes guarantee with
    `AloecryptSignable`, which lands with the first signable document type —
