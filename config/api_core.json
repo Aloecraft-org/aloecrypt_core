@@ -721,6 +721,10 @@
             "discriminant": "41"
           },
           {
+            "name": "PublicKey",
+            "discriminant": "50"
+          },
+          {
             "name": "Invalid",
             "discriminant": "65535"
           }

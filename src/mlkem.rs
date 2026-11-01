@@ -51,6 +51,14 @@ impl MlKem512Encapsulator {
             public_key: public_key.clone(),
         }
     }
+
+    /// `from_public_key` for bytes that came from outside: `None` unless they
+    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
+    /// result can never reach the panic a malformed key would cause.
+    pub fn try_from_public_key(public_key: &MlKem512Pubkey) -> Option<Self> {
+        EncapsulationKey::<MlKem512>::new(&(*public_key).into()).ok()?;
+        Some(Self::from_public_key(public_key))
+    }
 }
 
 impl MlKem768Encapsulator {
@@ -62,6 +70,14 @@ impl MlKem768Encapsulator {
             public_key: public_key.clone(),
         }
     }
+
+    /// `from_public_key` for bytes that came from outside: `None` unless they
+    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
+    /// result can never reach the panic a malformed key would cause.
+    pub fn try_from_public_key(public_key: &MlKem768Pubkey) -> Option<Self> {
+        EncapsulationKey::<MlKem768>::new(&(*public_key).into()).ok()?;
+        Some(Self::from_public_key(public_key))
+    }
 }
 
 impl MlKem1024Encapsulator {
@@ -72,6 +88,14 @@ impl MlKem1024Encapsulator {
         MlKem1024Encapsulator {
             public_key: public_key.clone(),
         }
+    }
+
+    /// `from_public_key` for bytes that came from outside: `None` unless they
+    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
+    /// result can never reach the panic a malformed key would cause.
+    pub fn try_from_public_key(public_key: &MlKem1024Pubkey) -> Option<Self> {
+        EncapsulationKey::<MlKem1024>::new(&(*public_key).into()).ok()?;
+        Some(Self::from_public_key(public_key))
     }
 }
 
