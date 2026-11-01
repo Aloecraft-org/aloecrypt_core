@@ -767,7 +767,7 @@ pub fn encrypt_to_recipient_512(
     payload: &[u8],
     out: &mut [u8],
 ) -> AloecryptResult<usize> {
-    let result = recipient.encapsulate(prk);
+    let result = recipient.encapsulate(prk)?;
     let key = domain_hash(&result.secret, MLKEM_512_ENCRYPT_DOMAIN);
     seal_document(
         AloecryptAlgorithmEnum::MlKem512,
@@ -785,7 +785,7 @@ pub fn encrypt_to_recipient_768(
     payload: &[u8],
     out: &mut [u8],
 ) -> AloecryptResult<usize> {
-    let result = recipient.encapsulate(prk);
+    let result = recipient.encapsulate(prk)?;
     let key = domain_hash(&result.secret, MLKEM_768_ENCRYPT_DOMAIN);
     seal_document(
         AloecryptAlgorithmEnum::MlKem768,
@@ -803,7 +803,7 @@ pub fn encrypt_to_recipient_1024(
     payload: &[u8],
     out: &mut [u8],
 ) -> AloecryptResult<usize> {
-    let result = recipient.encapsulate(prk);
+    let result = recipient.encapsulate(prk)?;
     let key = domain_hash(&result.secret, MLKEM_1024_ENCRYPT_DOMAIN);
     seal_document(
         AloecryptAlgorithmEnum::MlKem1024,
@@ -1095,9 +1095,7 @@ pub fn read_recipient_512(doc: &[u8]) -> AloecryptResult<MlKem512Encapsulator> {
     let Ok(key) = <&MlKem512Pubkey>::try_from(key) else {
         return err(StatusCodeEnum::BadEncoding);
     };
-    let Some(recipient) = MlKem512Encapsulator::try_from_public_key(key) else {
-        return err(StatusCodeEnum::BadEncoding);
-    };
+    let recipient = MlKem512Encapsulator::try_from_public_key(key)?;
     let derived = recipient.address();
     check_address(recipient, address, derived)
 }
@@ -1111,9 +1109,7 @@ pub fn read_recipient_768(doc: &[u8]) -> AloecryptResult<MlKem768Encapsulator> {
     let Ok(key) = <&MlKem768Pubkey>::try_from(key) else {
         return err(StatusCodeEnum::BadEncoding);
     };
-    let Some(recipient) = MlKem768Encapsulator::try_from_public_key(key) else {
-        return err(StatusCodeEnum::BadEncoding);
-    };
+    let recipient = MlKem768Encapsulator::try_from_public_key(key)?;
     let derived = recipient.address();
     check_address(recipient, address, derived)
 }
@@ -1127,9 +1123,7 @@ pub fn read_recipient_1024(doc: &[u8]) -> AloecryptResult<MlKem1024Encapsulator>
     let Ok(key) = <&MlKem1024Pubkey>::try_from(key) else {
         return err(StatusCodeEnum::BadEncoding);
     };
-    let Some(recipient) = MlKem1024Encapsulator::try_from_public_key(key) else {
-        return err(StatusCodeEnum::BadEncoding);
-    };
+    let recipient = MlKem1024Encapsulator::try_from_public_key(key)?;
     let derived = recipient.address();
     check_address(recipient, address, derived)
 }

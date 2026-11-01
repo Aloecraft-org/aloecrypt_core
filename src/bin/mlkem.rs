@@ -30,7 +30,7 @@ fn main() {
     let public_key = kem_keypair.public_key;
     let encapsulator = MlKem768Encapsulator::from_public_key(&public_key);
 
-    let kem_encap_result = encapsulator.encapsulate(kem_prk);
+    let kem_encap_result = encapsulator.encapsulate(kem_prk).unwrap();
     let secret = kem_encap_result.secret;
     let cipher = kem_encap_result.cipher;
 

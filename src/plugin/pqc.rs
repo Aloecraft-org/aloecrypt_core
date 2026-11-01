@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use super::dsa_api::*;
 use super::kem_api::*;
+use crate::error::AloecryptResult;
 
 // use extism_pdk::{FnResult, plugin_fn};
 
@@ -115,18 +116,18 @@ pub fn mlkem__kem1024__pubkey(seed_bytes: &MlKemPrivateSeed) -> MlKem1024Pubkey 
 pub fn mlkem__kem512__encapsulate(
     public_key: &MlKem512Pubkey,
     prk: &MlKemPrkSeed,
-) -> MlKem512EncapsulatorResult {
+) -> AloecryptResult<MlKem512EncapsulatorResult> {
     MlKem512Encapsulator::from_public_key(public_key).encapsulate(prk.clone())
 }
 pub fn mlkem__kem768__encapsulate(
     public_key: &MlKem768Pubkey,
     prk: &MlKemPrkSeed,
-) -> MlKem768EncapsulatorResult {
+) -> AloecryptResult<MlKem768EncapsulatorResult> {
     MlKem768Encapsulator::from_public_key(public_key).encapsulate(prk.clone())
 }
 pub fn mlkem__kem1024__encapsulate(
     public_key: &MlKem1024Pubkey,
     prk: &MlKemPrkSeed,
-) -> MlKem1024EncapsulatorResult {
+) -> AloecryptResult<MlKem1024EncapsulatorResult> {
     MlKem1024Encapsulator::from_public_key(public_key).encapsulate(prk.clone())
 }

@@ -480,9 +480,19 @@ fn generate_traits(out: &mut File, value: &serde_json::Value, namespace: &str) {
                             _ => "".to_string(),
                         };
 
-                        let where_clause = constraints
-                            .map(|c| format!(" where {c}"))
-                            .unwrap_or_default();
+                        // `Result<Self, _>` needs `Self: Sized`, which a
+                        // bare `-> Self` gets implicitly but a type argument
+                        // does not: a fallible constructor adds the bound.
+                        let returns_self =
+                            function.get("return").and_then(|r| r.as_str()) == Some("Self");
+                        let fallible_self = returns_self
+                            && function.get("fallible").and_then(|f| f.as_str()) == Some("true");
+                        let where_clause = match (constraints, fallible_self) {
+                            (Some(c), true) => format!(" where {c}, Self: Sized"),
+                            (Some(c), false) => format!(" where {c}"),
+                            (None, true) => " where Self: Sized".to_string(),
+                            (None, false) => String::new(),
+                        };
 
                         if let Some(function_description) = function.get("description") {
                             writeln!(

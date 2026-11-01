@@ -60,13 +60,16 @@ fn main() {
 
     let kem_512_encap_1_result = kem_512_keypair_1
         .get_encapsulator()
-        .encapsulate(kem_512_prk);
+        .encapsulate(kem_512_prk)
+        .unwrap();
     let kem_768_encap_1_result = kem_768_keypair_1
         .get_encapsulator()
-        .encapsulate(kem_768_prk);
+        .encapsulate(kem_768_prk)
+        .unwrap();
     let kem_1024_encap_1_result = kem_1024_keypair_1
         .get_encapsulator()
-        .encapsulate(kem_1024_prk);
+        .encapsulate(kem_1024_prk)
+        .unwrap();
 
     let kem_512_decap_1_secret = kem_512_keypair_1.decapsulate(&kem_512_encap_1_result.cipher);
     let kem_768_decap_1_secret = kem_768_keypair_1.decapsulate(&kem_768_encap_1_result.cipher);
@@ -226,7 +229,8 @@ fn main() {
         prk_seed,
         &secret_ikm,
         secret_domain,
-    );
+    )
+    .unwrap();
 
     // Recovery key holder keeps this
     let recovery_key = recoverable_secret.recovery_key;
