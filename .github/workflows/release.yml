@@ -56,8 +56,9 @@ jobs:
       technoproj: v0.4.1
 
   # The crate is a library, so a release ships its source package and the
-  # bindings generated from the schema. The tests run here too, so a release
-  # is not a way around them.
+  # bindings generated from the schema. `cargo package` verifies by building
+  # the packaged tree. The tests run here too, so a release is not a way
+  # around them.
   build:
     name: Build
     needs: preflight
@@ -74,7 +75,7 @@ jobs:
         run: cargo test && cargo test --no-default-features
       - name: package the crate
         run: |
-          cargo package --no-verify
+          cargo package
           mkdir -p out
           cp target/package/aloecrypt_core-*.crate out/
       - name: generate bindings

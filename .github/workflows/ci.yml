@@ -90,6 +90,10 @@ jobs:
         run: cargo test
       - name: test (minimal features)
         run: cargo test --no-default-features
+      # Builds the packaged tree. Fails if build.rs writes outside OUT_DIR,
+      # which would break a crates.io release and read-only checkouts.
+      - name: package (verified)
+        run: cargo package --no-default-features
       - name: build bins
         run: cargo build --bins
       - name: build release
@@ -136,9 +140,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: install generator deps
         run: pip install pydantic
-      # `make lint` builds the lib first: the merged schema the linter reads is
-      # written by build.rs, so invoking the linter directly on a fresh
-      # checkout finds no .generated/api_core_merged.json and exits 2.
+      # `make lint` runs merge_docs first: the merged schema the linter reads is
+      # copied out of the build by the merge_schema binary, so invoking the
+      # linter directly on a fresh checkout finds no
+      # .generated/api_core_merged.json and exits 2.
       - name: lint the schema
         run: make lint
       - name: generate python bindings

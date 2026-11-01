@@ -782,24 +782,24 @@ fn read_json(path: &str) -> serde_json::Value {
 fn main() {
     const SRC: &str = "config/api_core.json";
     const DOCS: &str = "doc/api_core_docs.json";
-    const MERGED: &str = ".generated/api_core_merged.json";
 
     println!("cargo:rerun-if-changed={}", SRC);
     println!("cargo:rerun-if-changed={}", DOCS);
 
     let merged = merge_docs(read_json(SRC), &read_json(DOCS));
 
-    // The Python and TypeScript generators read the merged schema from disk, so
-    // keep writing it. Emitting it here means there is exactly one implementation
-    // of the merge and no separate `make merge_docs` step to forget.
-    fs::create_dir_all(".generated").expect("failed to create .generated");
+    // A build script may write only under OUT_DIR: a crate packaged for
+    // crates.io, vendored, or checked out read-only must not have its source
+    // tree touched. The Python and TypeScript generators read the merged
+    // schema from disk, so it is written here and `src/bin/merge_schema.rs`
+    // copies it out for them (`make merge_docs`). The merge itself still has
+    // exactly one implementation.
+    let out_dir = std::env::var("OUT_DIR").unwrap();
     fs::write(
-        MERGED,
+        Path::new(&out_dir).join("api_core_merged.json"),
         serde_json::to_string_pretty(&merged).expect("failed to serialize merged schema"),
     )
     .expect("failed to write merged schema");
 
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    let out_path = Path::new(&out_dir).join("api_core.rs");
-    generate_api(&merged, out_path);
+    generate_api(&merged, Path::new(&out_dir).join("api_core.rs"));
 }
