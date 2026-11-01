@@ -305,7 +305,7 @@ stream either way. Only the previously-unprotected bytes change.
 
 ## 11. Test coverage
 
-153 tests, none ignored. The convention stands: an `#[ignore]`d test names the
+156 tests, none ignored. The convention stands: an `#[ignore]`d test names the
 bug it is waiting on and fails deliberately when that bug is fixed, so a gap
 cannot be quietly lost — the list is simply empty right now.
 

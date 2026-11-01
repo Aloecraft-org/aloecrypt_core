@@ -69,7 +69,13 @@ impl IOtpCredential for OtpCredential {
         };
 
         if s.len() > 255 {
-            return OtpCredential::invalid("input exceeds 255 characters", &s[0..255]);
+            // Cut on a char boundary: slicing mid-character panics, and this
+            // is attacker-reachable input.
+            let mut cut = 255;
+            while !s.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            return OtpCredential::invalid("input exceeds 255 characters", &s[..cut]);
         }
 
         // Branch 1: bare base32 — only [A-Za-z2-7=]
@@ -376,49 +382,22 @@ impl IOtpCredential for OtpCredential {
             | ((digest[offset + 2] as u32) << 8)
             | (digest[offset + 3] as u32);
 
-        // digits: saturate 33-255 to 32, clamp to 1 minimum
-        let digits = match self.digits {
-            0 => 6u8, // default
-            1..=32 => self.digits,
-            _ => 32u8,
+        // 0 means the default of 6. More digits than OtpResult holds has no
+        // correct code to give: truncating p % 10^d yields a code that looks
+        // valid but is wrong, and past 10 digits the 31-bit value zero-pads
+        // to a constant. So those return no code at all, all -1.
+        let d = match self.digits {
+            0 => 6usize,
+            n if (n as usize) <= OTP_RESULT_SZ => n as usize,
+            _ => return [-1i8; OTP_RESULT_SZ],
         };
 
-        // Extract individual decimal digits, left-packed, -1 padded
-        // We need `digits` decimal digits from p. For digits <= 9 we use
-        // modulo; for digits 10-32 we use the full 32-bit value split into
-        // individual digits.
+        // p % 10^d, left-packed into the result, -1 padded.
         let mut result = [-1i8; OTP_RESULT_SZ];
-        let d = digits as usize;
-
-        if d <= 9 {
-            // Standard path: p % 10^d
-            let mut modulus = 1u32;
-            for _ in 0..d {
-                modulus = modulus.saturating_mul(10);
-            }
-            let code = p % modulus;
-            // left-pack digits
-            let mut tmp = [0u8; 9];
-            let mut v = code;
-            for i in (0..d).rev() {
-                tmp[i] = (v % 10) as u8;
-                v /= 10;
-            }
-            for i in 0..d.min(OTP_RESULT_SZ) {
-                result[i] = tmp[i] as i8;
-            }
-        } else {
-            // Extended path for d 10-32: treat p as a 32-bit value,
-            // zero-extend to `d` decimal digits
-            let mut tmp = [0u8; 32];
-            let mut v = p;
-            for i in (0..d).rev() {
-                tmp[i] = (v % 10) as u8;
-                v /= 10;
-            }
-            for i in 0..d.min(OTP_RESULT_SZ) {
-                result[i] = tmp[i] as i8;
-            }
+        let mut code = p % 10u32.pow(d as u32);
+        for i in (0..d).rev() {
+            result[i] = (code % 10) as i8;
+            code /= 10;
         }
 
         result
@@ -438,26 +417,38 @@ impl IOtpCredential for OtpCredential {
         self.t0 = t0;
         self
     }
-    fn with_secret(&mut self, secret: &[u8]) -> &Self {
+    fn with_secret(&mut self, secret: &[u8]) -> Result<&Self, StatusCode> {
+        if secret.len() > 255 {
+            return Err(StatusCodeEnum::BadArgument.into());
+        }
         self.secret = VarByte255::from_byte_arr(secret);
-        self
+        Ok(self)
     }
     fn with_algorithm(&mut self, algorithm: OtpAlgorithm) -> &Self {
         self.algorithm = algorithm;
         self
     }
-    fn with_issuer(&mut self, issuer: &str) -> &Self {
-        self.issuer = VarChar255::from_str(issuer);
-        self
+    fn with_issuer(&mut self, issuer: &str) -> Result<&Self, StatusCode> {
+        self.issuer = varchar(issuer)?;
+        Ok(self)
     }
-    fn with_account_name(&mut self, account_name: &str) -> &Self {
-        self.account_name = VarChar255::from_str(account_name);
-        self
+    fn with_account_name(&mut self, account_name: &str) -> Result<&Self, StatusCode> {
+        self.account_name = varchar(account_name)?;
+        Ok(self)
     }
-    fn with_label(&mut self, label: &str) -> &Self {
-        self.label = VarChar255::from_str(label);
-        self
+    fn with_label(&mut self, label: &str) -> Result<&Self, StatusCode> {
+        self.label = varchar(label)?;
+        Ok(self)
     }
+}
+
+/// The builders take caller strings over the wire, where VarChar255's length
+/// assert would abort the module, so they check first.
+fn varchar(s: &str) -> Result<VarChar255, StatusCode> {
+    if s.len() > 255 {
+        return Err(StatusCodeEnum::BadArgument.into());
+    }
+    Ok(VarChar255::from_str(s))
 }
 
 // ---------------------------------------------------------------------------
@@ -658,8 +649,8 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
                 None => return OtpCredential::invalid("cannot parse counter", raw),
             },
             "digits" => match parse_u8(val) {
-                Some(v) => digits = Some(v),
-                None => return OtpCredential::invalid("cannot parse digits", raw),
+                Some(v) if (1..=OTP_RESULT_SZ as u8).contains(&v) => digits = Some(v),
+                _ => return OtpCredential::invalid("digits must be 1 to 8", raw),
             },
             "algorithm" => {
                 let mut tmp = [0u8; 10];
@@ -841,8 +832,8 @@ fn apply_query_params(
                 }
             }
             "digits" => match parse_u8(val) {
-                Some(v) => cred.digits = v,
-                None => return Err(OtpCredential::invalid("cannot parse digits", raw)),
+                Some(v) if (1..=OTP_RESULT_SZ as u8).contains(&v) => cred.digits = v,
+                _ => return Err(OtpCredential::invalid("digits must be 1 to 8", raw)),
             },
             "algorithm" => {
                 let mut tmp = [0u8; 10];

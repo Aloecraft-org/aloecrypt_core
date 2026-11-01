@@ -436,12 +436,58 @@ fn uri_round_trips() {
 fn builder_methods_set_fields() {
     let mut c = OtpCredential::from_string(&format!("totp/{SEED_SHA1}"));
     c.with_period(60);
-    c.with_issuer("Example");
-    c.with_account_name("alice");
+    c.with_issuer("Example").unwrap();
+    c.with_account_name("alice").unwrap();
     c.with_algorithm(OtpAlgorithm(OtpAlgorithm::SHA256));
     let (period, algorithm): (i64, OtpAlgorithmEnum) = (c.period, c.algorithm.into());
     assert_eq!(period, 60);
     assert_eq!(algorithm, OtpAlgorithmEnum::SHA256);
     assert_eq!(c.issuer.to_str(), "Example");
     assert_eq!(c.account_name.to_str(), "alice");
+}
+
+#[test]
+fn builders_reject_oversized_input_instead_of_panicking() {
+    let mut c = OtpCredential::from_string(&format!("totp/{SEED_SHA1}"));
+    let long = "x".repeat(256);
+    let bad: StatusCodeEnum = StatusCodeEnum::BadArgument;
+    for r in [
+        c.with_issuer(&long).err(),
+        c.with_account_name(&long).err(),
+        c.with_label(&long).err(),
+        c.with_secret(long.as_bytes()).err(),
+    ] {
+        let code: StatusCodeEnum = r.expect("oversized input must be rejected").into();
+        assert_eq!(code, bad);
+    }
+    assert!(c.with_issuer(&"x".repeat(255)).is_ok());
+}
+
+#[test]
+fn digits_beyond_the_result_width_are_rejected() {
+    // OtpResult holds 8 digits. A 9+ digit code cannot be represented, and
+    // truncating it would yield a valid-looking wrong code.
+    for d in [0u8, 9, 10, 32, 255] {
+        let c =
+            OtpCredential::from_string(&format!("otpauth://hotp/a?secret={SEED_SHA1}&digits={d}"));
+        let t: OtpTypeEnum = c.otp_type.into();
+        assert_eq!(t, OtpTypeEnum::UNKNOWN, "digits={d} should not parse");
+    }
+    let mut c =
+        OtpCredential::from_string(&format!("otpauth://hotp/a?secret={SEED_SHA1}&digits=8"));
+    c.digits = 9;
+    assert_eq!(
+        c.generate(0),
+        [-1i8; 8],
+        "an out-of-range digits field yields no code"
+    );
+}
+
+#[test]
+fn overlong_multibyte_input_does_not_panic() {
+    // The 255-byte cut must land on a char boundary.
+    let s = format!("otpauth://totp/{}", "é".repeat(200));
+    let c = OtpCredential::from_string(&s);
+    let t: OtpTypeEnum = c.otp_type.into();
+    assert_eq!(t, OtpTypeEnum::UNKNOWN);
 }
