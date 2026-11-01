@@ -4,9 +4,6 @@ use super::rng_api::*;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::{CryptoRng, Infallible, Rng, SeedableRng, TryCryptoRng, TryRng};
 
-use super::hash;
-use super::hash::*;
-
 pub trait CryptoRngCore: Rng + CryptoRng {}
 impl<T: Rng + CryptoRng> CryptoRngCore for T {}
 impl TryCryptoRng for AloeRng {}

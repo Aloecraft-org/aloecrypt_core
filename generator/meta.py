@@ -56,19 +56,6 @@ class MetaValueType(Enum):
 
 # ─── Data model classes ──────────────────────────────────────────────────────
 
-class MetaEnumMember(BaseModel):
-    name: str
-    discriminant: int
-    is_default: bool = Field(False)
-    description: Optional[str] = Field(None)
-
-class MetaEnum(BaseModel):
-    name: str
-    namespace: str
-    repr_type: str
-    members: list[MetaEnumMember]
-    description: Optional[str] = Field(None)
-
 class MetaConst(BaseModel):
     name: str
     namespace: str
@@ -118,6 +105,10 @@ class MetaFunction(BaseModel):
     instance_str: Optional[str] = Field(None)
     instance_of: Optional[str] = Field(None)
     pure: Optional[bool] = Field(False)
+    # A fallible function can return a non-Ok StatusCode over the wire, in
+    # which case the payload is absent. Infallible functions carry the same
+    # uniform 2-byte status prefix, always Ok.
+    fallible: bool = Field(False)
 
     @property
     def is_class_function(self) -> bool:
@@ -167,6 +158,29 @@ class MetaField(BaseModel):
     name: str
     type_name: str
     description: Optional[str] = Field(None)
+
+
+class MetaEnumMember(BaseModel):
+    name: str
+    discriminant: int
+    description: Optional[str] = Field(None)
+    is_default: bool = Field(False)
+
+
+class MetaEnum(BaseModel):
+    """A schema enum.
+
+    Generated Rust is `#[repr(transparent)] struct X(pub <repr_type>)` -- a flat
+    newtype over a primitive, chosen so the value crosses the FFI boundary
+    unchanged. Generators mirror that flat representation rather than building a
+    richer enum type in the target language.
+    """
+    name: str
+    namespace: str
+    repr_type: str
+    size: int
+    description: Optional[str] = Field(None)
+    members: list[MetaEnumMember]
 
 
 class MetaStruct(BaseModel):
@@ -316,27 +330,32 @@ def load_meta(filename: str) -> APIMetaData:
                     len_str=length_expr, length=resolved)
                 type_sizes[ba["name"]] = resolved
 
-    # ── Pass 2.5: Enums ──
+    # ── Pass 2b: Enums ──
+    # Must run before structs: an enum used as a struct field needs a known size
+    # or the whole struct fails size resolution and is silently dropped.
     for ns_name, ns_val in schema.items():
         if not isinstance(ns_val, dict):
             continue
-        for e in ns_val.get("enums", []):
-            ename = e["name"]
-            repr_type = e.get("repr_type", "u32")
-            members = []
-            for m in e.get("members", []):
-                members.append(MetaEnumMember(
+        for en in ns_val.get("enums", []):
+            repr_type = en.get("repr_type", "u16").strip()
+            size = PRIMITIVE_TYPES.get(repr_type)
+            if size is None:
+                raise ValueError(
+                    f"enum {en['name']} has non-primitive repr_type {repr_type!r}")
+            members = [
+                MetaEnumMember(
                     name=m["name"],
-                    discriminant=int(m["discriminant"]),
-                    is_default=str(m.get("default", "false")).lower() == "true",
-                    description=m.get("description")
-                ))
-            meta_enums[ename] = MetaEnum(
-                name=ename, namespace=ns_name,
-                repr_type=repr_type, members=members,
-                description=e.get("description")
-            )
-            type_sizes[ename] = type_sizes.get(repr_type, 4)
+                    discriminant=int(str(m["discriminant"]).strip()),
+                    description=m.get("description"),
+                    is_default=str(m.get("default", "")).strip() == "true",
+                )
+                for m in en.get("members", [])
+            ]
+            meta_enums[en["name"]] = MetaEnum(
+                name=en["name"], namespace=ns_name,
+                repr_type=repr_type, size=size,
+                description=en.get("description"), members=members)
+            type_sizes[en["name"]] = size
 
     # ── Pass 3: Structs ──
     all_structs = []
@@ -365,7 +384,6 @@ def load_meta(filename: str) -> APIMetaData:
                 if ft in type_sizes:
                     total += type_sizes[ft]
                 else:
-                    print(f"warning: {ns_name} - field size not known: {s["name"]}.{field["name"]}")
                     all_known = False
                     break
             if all_known:
@@ -408,7 +426,8 @@ def load_meta(filename: str) -> APIMetaData:
                     instance_str=func.get("instance"),
                     instance_of=tname,
                     params=params,
-                    ret_str=func.get("return"))
+                    ret_str=func.get("return"),
+                    fallible=str(func.get("fallible", "")).strip() == "true")
             meta_traits[tname] = MetaTrait(
                 name=tname, namespace=ns_name,
                 generics=generics, functions=functions)
@@ -439,7 +458,7 @@ def load_meta(filename: str) -> APIMetaData:
             for p in func.get("params", []):
                 
                 if "type" not in p:
-                    print(f"OH NO - {ns_name} {p["name"]}")
+                    print(f"OH NO - {ns_name} {p.get('name')}")
                 pname = p["name"]
                 params[pname] = MetaFnParam(
                     name=pname, type_str=p["type"].strip())
@@ -448,7 +467,8 @@ def load_meta(filename: str) -> APIMetaData:
                 namespace=ns_name,
                 params=params,
                 ret_str=func.get("return"),
-                pure=True)
+                pure=True,
+                fallible=str(func.get("fallible", "")).strip() == "true")
 
     # ── Pass 7: Empty consts (informational, not critical for codegen) ──
     for ns_name, ns_val in schema.items():

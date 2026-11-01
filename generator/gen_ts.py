@@ -10,14 +10,15 @@ Emits:
 
 from meta import (
     APIMetaData, MetaStruct, MetaTrait, MetaFunction, MetaFnParam,
-    MetaByteAlias, MetaConst, MetaField, MetaEnum,
+    MetaByteAlias, MetaConst, MetaEnum, MetaField,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
-from wire import WireCall, PackedField
+from wire import WireCall, PackedField, STATUS_PREFIX_SZ, USIZE_WIRE_SZ
 from gen_base import LangGenerator
 from pathlib import Path
 
 GEN_DIR = Path(".generated", "gen_ts")
+MERGED_SCHEMA = Path(".generated", "api_core_merged.json")
 
 
 # ── Type mapping ─────────────────────────────────────────────────────────────
@@ -35,6 +36,9 @@ TS_TYPE_MAP = {
     "i128": "bigint",
     "bool": "boolean",
     "&[u8]": "Uint8Array",
+    # No wire encoding is defined for &[u16] yet; like gen_py, the caller
+    # passes the little-endian bytes through unchanged.
+    "&[u16]": "Uint8Array",
     "&str": "string",
     "Vec<u8>": "Uint8Array",
     "String": "string",
@@ -52,8 +56,17 @@ def ts_map_type(canonical: str) -> str:
     return inner
 
 
+# Signed integers: (byte size, pack helper, DataView getter).
+TS_SIGNED = {
+    "i8": (1, "packI8", "getInt8"),
+    "i16": (2, "packI16", "getInt16"),
+    "i32": (4, "packI32", "getInt32"),
+    "i64": (8, "packI64", "getBigInt64"),
+}
+
+
 def ts_map_return(canonical: str, struct_context: str | None) -> str:
-    if canonical == "Self":
+    if strip_ref(canonical.strip()) == "Self":
         return struct_context if struct_context else "unknown"
     return ts_map_type(canonical)
 
@@ -75,6 +88,14 @@ class TypeScriptGenerator(LangGenerator):
             " * Do not edit manually.",
             " */",
             "",
+            "/**",
+            " * The slice of the Extism JS SDK's Plugin these bindings use:",
+            " * `call` resolves to a PluginOutput (which has `bytes()`) or null.",
+            " */",
+            "export interface ExtismPlugin {",
+            "  call(funcName: string, input?: Uint8Array): Promise<{ bytes(): Uint8Array } | null>;",
+            "}",
+            "",
         ]
 
     def file_footer(self) -> list[str]:
@@ -91,22 +112,6 @@ class TypeScriptGenerator(LangGenerator):
             lines.append(f"export const {c.name}: number = {c.value};")
         return lines
 
-    # ── Enums ─────────────────────────────────────────────────────────────
-
-    def emit_enums(self, enums: dict[str, MetaEnum]) -> list[str]:
-        lines = []
-        for e in enums.values():
-            if e.description:
-                lines.append(f"/** {e.description} */")
-            lines.append(f"export enum {e.name} {{")
-            for m in e.members:
-                if m.description:
-                    lines.append(f"  /** {m.description} */")
-                lines.append(f"  {m.name} = {m.discriminant},")
-            lines.append("}")
-            lines.append("")
-        return lines
-
     # ── Byte aliases ──────────────────────────────────────────────────────
 
     def emit_byte_aliases(self, aliases: dict[str, MetaByteAlias]) -> list[str]:
@@ -116,6 +121,23 @@ class TypeScriptGenerator(LangGenerator):
             lines.append(f"export type {a.name} = Uint8Array;")
             lines.append(f"export const {a.name}_SZ: number = {a.length};")
             lines.append("")
+        return lines
+
+    # ── Enums ─────────────────────────────────────────────────────────────
+
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Flat numeric constants, mirroring the Rust #[repr(transparent)] newtype."""
+        lines = []
+        if enum.description:
+            lines.append(f"/** {enum.description} */")
+        lines.append(f"/** Flat {enum.repr_type} ({enum.size} bytes) on the wire. */")
+        lines.append(f"export type {enum.name} = number;")
+        lines.append(f"export const {enum.name} = {{")
+        for m in enum.members:
+            note = f"  // {m.description}" if m.description else ""
+            lines.append(f"  {m.name}: {m.discriminant},{note}")
+        lines.append("} as const;")
+        lines.append(f"export const {enum.name}_SZ: number = {enum.size};")
         return lines
 
     # ── Traits ────────────────────────────────────────────────────────────
@@ -147,8 +169,12 @@ class TypeScriptGenerator(LangGenerator):
     def emit_struct(self, struct: MetaStruct) -> list[str]:
         lines = []
         sz = self.meta.type_sizes.get(struct.name)
+        # No `implements`: the trait interfaces mirror the Rust signatures,
+        # while here each method is an async wire call taking a plugin.
         impl_list = [tn for tn in struct.traits if tn in self.meta.meta_traits]
-        implements = f" implements {', '.join(impl_list)}" if impl_list else ""
+        implements = ""
+        if impl_list:
+            lines.append(f"/** Rust traits: {', '.join(impl_list)}. Methods are the {struct.name.lower()}__* wrappers. */")
 
         if struct.description:
             lines.append(f"/** {struct.description} */")
@@ -220,11 +246,15 @@ class TypeScriptGenerator(LangGenerator):
         lines.append("  }")
         return lines
 
+    def _enum_repr(self, type_name: str) -> str | None:
+        """If this type is a schema enum, the primitive it is represented as."""
+        enum = self.meta.meta_enums.get(type_name.strip())
+        return enum.repr_type if enum else None
+
     def _field_pack_ts(self, f: MetaField) -> str:
         t = f.type_name.strip()
-        if t in self.meta.meta_enums:
-            t = self.meta.meta_enums[t].repr_type
-
+        # Enums are flat values over their repr type on the wire.
+        t = self._enum_repr(t) or t
         if t == "u8":
             return f"new Uint8Array([this.{f.name}])"
         elif t == "u16":
@@ -237,6 +267,8 @@ class TypeScriptGenerator(LangGenerator):
             return f"packU128(this.{f.name})"
         elif t == "bool":
             return f"new Uint8Array([this.{f.name} ? 1 : 0])"
+        elif t in TS_SIGNED:
+            return f"{TS_SIGNED[t][1]}(this.{f.name})"
         elif t in self.meta.meta_structs:
             return f"this.{f.name}.toBytes()"
         else:
@@ -245,52 +277,75 @@ class TypeScriptGenerator(LangGenerator):
     def _field_unpack_ts(self, f: MetaField, indent: str) -> list[str]:
         lines = []
         t = f.type_name.strip()
-        
-        enum_type = None
-        if t in self.meta.meta_enums:
-            enum_type = t
-            t = self.meta.meta_enums[t].repr_type
-
-        val_expr = ""
-        offset_inc = 0
-
+        t = self._enum_repr(t) or t
         if t == "u8":
-            val_expr = "data[offset]"
-            offset_inc = 1
+            lines.append(f"{indent}const {f.name} = data[offset];")
+            lines.append(f"{indent}offset += 1;")
         elif t == "u16":
-            val_expr = "view.getUint16(offset, true)"
-            offset_inc = 2
+            lines.append(f"{indent}const {f.name} = view.getUint16(offset, true);")
+            lines.append(f"{indent}offset += 2;")
         elif t == "u32":
-            val_expr = "view.getUint32(offset, true)"
-            offset_inc = 4
+            lines.append(f"{indent}const {f.name} = view.getUint32(offset, true);")
+            lines.append(f"{indent}offset += 4;")
         elif t == "u64":
-            val_expr = "view.getBigUint64(offset, true)"
-            offset_inc = 8
+            lines.append(f"{indent}const {f.name} = view.getBigUint64(offset, true);")
+            lines.append(f"{indent}offset += 8;")
         elif t == "u128":
             lines.append(f"{indent}const {f.name}_lo = view.getBigUint64(offset, true);")
             lines.append(f"{indent}const {f.name}_hi = view.getBigUint64(offset + 8, true);")
-            val_expr = f"{f.name}_lo | ({f.name}_hi << 64n)"
-            offset_inc = 16
+            lines.append(f"{indent}const {f.name} = {f.name}_lo | ({f.name}_hi << 64n);")
+            lines.append(f"{indent}offset += 16;")
         elif t == "bool":
-            val_expr = "(data[offset] !== 0)"
-            offset_inc = 1
+            lines.append(f"{indent}const {f.name} = data[offset] !== 0;")
+            lines.append(f"{indent}offset += 1;")
+        elif t in TS_SIGNED:
+            sz, _, getter = TS_SIGNED[t]
+            lines.append(f"{indent}const {f.name} = view.{getter}(offset, true);")
+            lines.append(f"{indent}offset += {sz};")
         else:
             sz = self.meta.type_sizes.get(t)
             if t in self.meta.meta_structs:
-                val_expr = f"{t}.fromBytes(data.slice(offset, offset + {sz}))"
+                lines.append(f"{indent}const {f.name} = {t}.fromBytes(data.slice(offset, offset + {sz}));")
             else:
-                val_expr = f"data.slice(offset, offset + {sz})"
-            offset_inc = sz
-
-        cast_expr = f" as {enum_type}" if enum_type else ""
-        lines.append(f"{indent}const {f.name} = {val_expr}{cast_expr};")
-        lines.append(f"{indent}offset += {offset_inc};")
+                lines.append(f"{indent}const {f.name} = data.slice(offset, offset + {sz});")
+            lines.append(f"{indent}offset += {sz};")
         return lines
 
     # ── Wire format helpers ───────────────────────────────────────────────
 
     def emit_pack_helpers(self) -> list[str]:
         return [
+            "export class AloecryptStatusError extends Error {",
+            "  readonly code: number;",
+            "  constructor(code: number) {",
+            "    super(`plugin returned status ${code}`);",
+            "    this.code = code;",
+            "  }",
+            "}",
+            "",
+            "// Every export replies with a little-endian u16 StatusCode ahead of its",
+            "// payload; the payload is absent on any non-Ok status. A reply shorter",
+            "// than the prefix, or an Ok payload of the wrong fixed size, is",
+            "// Unspecified rather than short or shifted bytes. expectedSize is",
+            "// undefined only for variable-length returns.",
+            "function checkStatus(output: { bytes(): Uint8Array } | null, expectedSize?: number): Uint8Array {",
+            "  const result = output ? output.bytes() : new Uint8Array(0);",
+            f"  if (result.length < {STATUS_PREFIX_SZ}) throw new AloecryptStatusError(StatusCode.Unspecified);",
+            "  const status = new DataView(result.buffer, result.byteOffset, result.byteLength).getUint16(0, true);",
+            "  if (status !== StatusCode.Ok) throw new AloecryptStatusError(status);",
+            f"  const payload = result.slice({STATUS_PREFIX_SZ});",
+            "  if (expectedSize !== undefined && payload.length !== expectedSize) {",
+            "    throw new AloecryptStatusError(StatusCode.Unspecified);",
+            "  }",
+            "  return payload;",
+            "}",
+            "",
+            "function readUint(data: Uint8Array): bigint {",
+            "  let v = 0n;",
+            "  for (let i = data.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(data[i]);",
+            "  return v;",
+            "}",
+            "",
             "function concatBytes(arrays: Uint8Array[]): Uint8Array {",
             "  const totalLen = arrays.reduce((acc, a) => acc + a.length, 0);",
             "  const result = new Uint8Array(totalLen);",
@@ -342,6 +397,30 @@ class TypeScriptGenerator(LangGenerator):
             "  return buf;",
             "}",
             "",
+            "function packI8(v: number): Uint8Array {",
+            "  const buf = new Uint8Array(1);",
+            "  new DataView(buf.buffer).setInt8(0, v);",
+            "  return buf;",
+            "}",
+            "",
+            "function packI16(v: number): Uint8Array {",
+            "  const buf = new Uint8Array(2);",
+            "  new DataView(buf.buffer).setInt16(0, v, true);",
+            "  return buf;",
+            "}",
+            "",
+            "function packI32(v: number): Uint8Array {",
+            "  const buf = new Uint8Array(4);",
+            "  new DataView(buf.buffer).setInt32(0, v, true);",
+            "  return buf;",
+            "}",
+            "",
+            "function packI64(v: bigint): Uint8Array {",
+            "  const buf = new Uint8Array(8);",
+            "  new DataView(buf.buffer).setBigInt64(0, v, true);",
+            "  return buf;",
+            "}",
+            "",
             "function packU128(v: bigint): Uint8Array {",
             "  const buf = new Uint8Array(16);",
             "  const view = new DataView(buf.buffer);",
@@ -352,59 +431,10 @@ class TypeScriptGenerator(LangGenerator):
             "",
         ]
 
-    # ── Namespaces ────────────────────────────────────────────────────────
-
-    def emit_namespace_wrappers(self) -> list[str]:
-        lines = []
-
-        # Emit all structs at top-level
-        for struct in self.meta.meta_structs.values():
-            lines += self.emit_struct(struct)
-            lines.append("")
-
-        # Emit namespace wrappers for standalone functions
-        ns_functions: dict[str, list[str]] = {}
-        for func in self.meta.meta_functions.values():
-            ns_functions.setdefault(func.namespace, []).append(func.name)
-
-        for ns in self.meta.namespaces:
-            fnames = ns_functions.get(ns, [])
-            if not fnames:
-                continue
-
-            lines.append(f"export namespace {ns} {{")
-            for fname in fnames:
-                func = self.meta.meta_functions[fname]
-                export_name = f"{ns}___{fname}"
-
-                params = []
-                call_args = []
-                for param in func.params.values():
-                    if not param.is_rng:
-                        ts_type = self.map_type(param.type_str)
-                        params.append(f"{param.name}: {ts_type}")
-                        call_args.append(param.name)
-
-                ret_ts = "void"
-                if func.ret_str:
-                    ret_ts = self.map_return_type(func.ret_str, None)
-
-                params.append("plugin: ExtismPlugin")
-                call_args.append("plugin")
-
-                lines.append(f"  export async function {fname}({', '.join(params)}): Promise<{ret_ts}> {{")
-                lines.append(f"    return await {export_name}({', '.join(call_args)});")
-                lines.append("  }")
-            lines.append("}")
-            lines.append("")
-
-        return lines
-
     # ── Call wrappers ─────────────────────────────────────────────────────
 
     def emit_call_wrapper(self, call: WireCall) -> list[str]:
         lines = []
-
 
         # Build TS function signature
         ts_params = []
@@ -419,6 +449,8 @@ class TypeScriptGenerator(LangGenerator):
             ret_ts = self.map_return_type(call.return_type, call.struct_name)
 
         sig = f"export async function {call.export_name}({', '.join(ts_params)}): Promise<{ret_ts}> {{"
+        if call.fallible:
+            lines.append("/** Throws AloecryptStatusError on a non-Ok status. */")
         lines.append(sig)
 
         # Pack
@@ -430,36 +462,54 @@ class TypeScriptGenerator(LangGenerator):
             lines.append(f"  parts.push({self._pack_expr_ts(pf)});")
 
         lines.append("  const payload = concatBytes(parts);")
-        lines.append(f"  const result = await plugin.call('{call.export_name}', payload);")
+        expected = self._expected_payload_size(call)
+        expected_arg = "" if expected is None else f", {expected}"
+        lines.append(
+            f"  const result = checkStatus(await plugin.call('{call.export_name}', payload){expected_arg});"
+        )
 
         # Unpack
+        rt = (call.return_type or "").strip()
+        inner = strip_ref(rt).strip()
         if call.return_type is None:
             pass
-        elif call.return_type == "bool":
+        elif rt == "bool":
             lines.append("  return result[0] !== 0;")
-        elif call.return_type == "Self" and call.struct_name:
+        elif inner == "Self" and call.struct_name:
             lines.append(f"  return {call.struct_name}.fromBytes(result);")
-        elif call.return_type.startswith("&"):
-            inner = strip_ref(call.return_type)
-            if inner in self.meta.meta_structs:
-                lines.append(f"  return {inner}.fromBytes(result);")
-            else:
-                lines.append("  return result;")
-        elif call.return_type in self.meta.meta_structs:
-            lines.append(f"  return {call.return_type}.fromBytes(result);")
-        elif call.return_type in self.meta.meta_enums:
-            e = self.meta.meta_enums[call.return_type]
-            if e.repr_type == "u8":
-                lines.append(f"  return result[0] as {call.return_type};")
-            else:
-                meth = {'u16': 'getUint16', 'u32': 'getUint32', 'u64': 'getBigUint64'}.get(e.repr_type, 'getUint32')
-                lines.append(f"  const view = new DataView(result.buffer, result.byteOffset, result.byteLength);")
-                lines.append(f"  return view.{meth}(0, true) as {call.return_type};")
+        elif rt == "&str":
+            lines.append("  return new TextDecoder().decode(result);")
+        elif inner in self.meta.meta_structs:
+            lines.append(f"  return {inner}.fromBytes(result);")
+        elif inner in self.meta.meta_enums or inner in ("u8", "u16", "u32", "usize"):
+            lines.append("  return Number(readUint(result));")
+        elif inner in ("u64", "u128"):
+            lines.append("  return readUint(result);")
+        elif inner in TS_SIGNED:
+            sz, _, getter = TS_SIGNED[inner]
+            lines.append(f"  return new DataView(result.buffer, result.byteOffset, result.byteLength).{getter}(0, true);")
         else:
+            # byte alias, &[u8]
             lines.append("  return result;")
 
         lines.append("}")
         return lines
+
+    def _expected_payload_size(self, call: WireCall) -> int | None:
+        """Exact Ok payload length, or None for &str / &[u8]. Mirrors gen_py."""
+        rt = (call.return_type or "").strip()
+        if not rt:
+            return 0
+        if rt in ("&str", "&[u8]"):
+            return None
+        if rt == "bool":
+            return 1
+        inner = strip_ref(rt).strip()
+        if inner == "Self":
+            return self.meta.type_sizes.get(call.struct_name)
+        if inner == "usize":
+            return USIZE_WIRE_SZ
+        return self.meta.type_sizes.get(inner)
 
     def _pack_expr_ts(self, pf: PackedField) -> str:
         t = pf.type_str
@@ -468,9 +518,12 @@ class TypeScriptGenerator(LangGenerator):
                 return f"packStr({pf.name})"
             return f"packVarlen({pf.name})"
         inner = strip_ref(t)
-        if inner in self.meta.meta_enums:
-            inner = self.meta.meta_enums[inner].repr_type
-
+        # Enums are flat values over their repr type on the wire.
+        inner = self._enum_repr(inner) or inner
+        if inner in TS_SIGNED:
+            return f"{TS_SIGNED[inner][1]}({pf.name})"
+        if inner == "usize":
+            return f"packU64(BigInt({pf.name}))"
         if inner == "u8":
             return f"new Uint8Array([{pf.name}])"
         elif inner == "u16":
@@ -499,71 +552,54 @@ class TypeScriptGenerator(LangGenerator):
         return f"{func.name}({', '.join(params)}): {ret}"
 
 
+    # ── Namespaces ────────────────────────────────────────────────────────
+
+    def emit_namespace_wrappers(self) -> list[str]:
+        """Struct classes at top level, then one TS namespace per schema
+        namespace re-exporting its standalone functions."""
+        lines = []
+        for struct in self.meta.meta_structs.values():
+            lines += self.emit_struct(struct)
+            lines.append("")
+
+        ns_functions: dict[str, list[str]] = {}
+        for func in self.meta.meta_functions.values():
+            ns_functions.setdefault(func.namespace, []).append(func.name)
+
+        for ns in self.meta.namespaces:
+            fnames = ns_functions.get(ns, [])
+            if not fnames:
+                continue
+            lines.append(f"export namespace {ns} {{")
+            for fname in fnames:
+                func = self.meta.meta_functions[fname]
+                params, call_args = [], []
+                for param in func.params.values():
+                    if not param.is_rng:
+                        params.append(f"{param.name}: {self.map_type(param.type_str)}")
+                        call_args.append(param.name)
+                params.append("plugin: ExtismPlugin")
+                call_args.append("plugin")
+                ret_ts = self.map_return_type(func.ret_str, None) if func.ret_str else "void"
+                lines.append(f"  export function {fname}({', '.join(params)}): Promise<{ret_ts}> {{")
+                lines.append(f"    return {ns}___{fname}({', '.join(call_args)});")
+                lines.append("  }")
+            lines.append("}")
+            lines.append("")
+        return lines
+
+
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
-    meta = load_meta(".generated/api_core_merged.json")
+    meta = load_meta(str(MERGED_SCHEMA))
     gen = TypeScriptGenerator(meta)
-    # output = gen.generate()
-    
-    lines: list[str] = []
-    lines += gen.file_header()
-    lines.append("")
-
-    # Constants
-    lines.append(gen.section_comment("Constants"))
-    lines += gen.emit_constants(gen.meta.meta_consts)
-    lines.append("")
-
-    # Byte aliases
-    lines.append(gen.section_comment("Byte Aliases"))
-    lines += gen.emit_byte_aliases(gen.meta.meta_byte_aliases)
-    lines.append("")
-
-    # Enums
-    lines.append(gen.section_comment("Enums"))
-    lines += gen.emit_enums(gen.meta.meta_enums)
-    lines.append("")
-
-    # Traits / Interfaces
-    lines.append(gen.section_comment("Traits"))
-    for trait in gen.meta.meta_traits.values():
-        lines += gen.emit_trait(trait)
-        lines.append("")
-
-    # Wire helpers (before namespaces so they're available)
-    lines.append(gen.section_comment("Wire Format Helpers"))
-    lines += gen.emit_pack_helpers()
-    lines.append("")
-
-    # Call wrappers (before namespaces so struct methods can delegate)
-    lines.append(gen.section_comment("Plugin Call Wrappers"))
-    for call in gen.wire_calls:
-        lines += gen.emit_call_wrapper(call)
-        lines.append("")
-
-    # Namespace classes with inner structs and standalone functions
-    lines.append(gen.section_comment("Namespaces"))
-    lines += gen.emit_namespace_wrappers()
-    lines.append("")
-
-    lines += gen.file_footer()
-    output = "\n".join(lines)
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    output = gen.generate()
     GEN_DIR.mkdir(parents=True, exist_ok=True)
     outpath = GEN_DIR / "aloecrypt_core.ts"
     outpath.write_text(output)
     print(f"Generated {outpath} ({len(output)} bytes)")
+
 
 if __name__ == "__main__":
     main()

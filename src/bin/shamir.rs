@@ -1,5 +1,4 @@
 use aloecrypt_core::aloecrypt_api::*;
-use aloecrypt_core::fixed_byte::*;
 use aloecrypt_core::shamir::*;
 
 fn main() {

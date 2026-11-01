@@ -13,14 +13,17 @@ from meta import (
     MetaByteAlias, MetaConst, MetaField, MetaEnum,
     is_varlen, is_primitive, strip_ref, PRIMITIVE_TYPES, load_meta
 )
-from wire import WireCall, PackedField, build_wire_calls
+from wire import WireCall, PackedField, build_wire_calls, STATUS_PREFIX_SZ, USIZE_WIRE_SZ
 from gen_base import LangGenerator
 from pathlib import Path
 
 GEN_DIR = Path(".generated", "gen_py")
-API_DIR = GEN_DIR / "api"
+
 
 # ── Type mapping ─────────────────────────────────────────────────────────────
+
+# Signed integers cross the wire as little-endian two's complement.
+SIGNED_STRUCT_FMT = {"i8": "<b", "i16": "<h", "i32": "<i", "i64": "<q"}
 
 PY_TYPE_MAP = {
     "u8": "int",
@@ -83,7 +86,54 @@ class PythonGenerator(LangGenerator):
             "from abc import ABC, abstractmethod",
             "from dataclasses import dataclass, field",
             "from typing import Optional, ClassVar",
-            "from enum import IntEnum",
+            "",
+            "",
+            "class _Plugin:",
+            "    _instance = None",
+            "    _plugin = None",
+            "    _wasm_path: str = None",
+            "",
+            "    def __new__(cls):",
+            "        if cls._instance is None:",
+            "            cls._instance = super(_Plugin, cls).__new__(cls)",
+            "        return cls._instance",
+            "",
+            "    @classmethod",
+            "    def configure(cls, wasm_path: str):",
+            '        """Set the path to the WASM plugin binary."""',
+            "        cls._wasm_path = wasm_path",
+            "        cls._plugin = None  # Reset so next access reloads",
+            "        cls._instance = None",
+            "",
+            "    @property",
+            "    def plugin(self):",
+            "        if self._plugin is None:",
+            "            if self._wasm_path is None:",
+            '                raise RuntimeError("Call _Plugin.configure(wasm_path) before using aloecrypt")',
+            "            import extism",
+            "            with open(self._wasm_path, 'rb') as f:",
+            "                wasm_bytes = f.read()",
+            "            _Plugin._plugin = extism.Plugin(wasm_bytes, wasi=True)",
+            "        return self._plugin",
+            "",
+            "",
+            "class AloecryptStatusError(Exception):",
+            '    """A plugin export returned a non-Ok StatusCode.',
+            "",
+            "    Every export returns a 2-byte little-endian status ahead of its",
+            "    payload; on any non-zero status the payload is absent and this is",
+            "    raised instead. The code is deliberately coarse -- for authenticated",
+            "    decryption, a wrong key and an altered ciphertext are the same code",
+            "    on purpose.",
+            '    """',
+            "",
+            "    def __init__(self, code: int):",
+            "        self.code = code",
+            "        # StatusCode is defined later in this module; by the time an",
+            "        # error can be raised the module is fully loaded.",
+            "        super().__init__(f\"plugin returned {StatusCode.name_of(code)} ({code})\")",
+            "",
+            "",
         ]
 
     def file_footer(self) -> list[str]:
@@ -171,20 +221,6 @@ class PythonGenerator(LangGenerator):
             lines.append(f"{c.name}: int = {c.value}")
         return lines
 
-    # ── Enums ─────────────────────────────────────────────────────────────
-
-    def emit_enums(self, enums: dict[str, MetaEnum]) -> list[str]:
-        lines = []
-        for e in enums.values():
-            lines.append(f"class {e.name}(IntEnum):")
-            if e.description:
-                lines.append(f'    """{e.description}"""')
-            for m in e.members:
-                desc = f"  # {m.description}" if m.description else ""
-                lines.append(f"    {m.name} = {m.discriminant}{desc}")
-            lines.append("")
-        return lines
-
     # ── Byte aliases ──────────────────────────────────────────────────────
 
     def emit_byte_aliases(self, aliases: dict[str, MetaByteAlias]) -> list[str]:
@@ -203,6 +239,38 @@ class PythonGenerator(LangGenerator):
             lines.append(f"        return cls(random.randbytes({a.length}))")
             lines.append(f"{a.name}_SZ: int = {a.length}")
             lines.append("")
+        return lines
+
+    # ── Enums ─────────────────────────────────────────────────────────────
+
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Flat int subclass, mirroring the Rust #[repr(transparent)] newtype."""
+        lines = []
+        lines.append(f"class {enum.name}(int):")
+        doc = enum.description or f"{enum.repr_type} value ({enum.size} bytes)"
+        lines.append(f'    """{doc}')
+        lines.append("")
+        lines.append(f"    Flat {enum.repr_type} on the wire -- the Rust side is a")
+        lines.append("    #[repr(transparent)] newtype, so the value crosses unchanged.")
+        lines.append('    """')
+        lines.append(f"    SZ: ClassVar[int] = {enum.size}")
+        for m in enum.members:
+            bits = []
+            if m.description:
+                bits.append(m.description)
+            if m.is_default:
+                bits.append("default")
+            note = f"  # {'; '.join(bits)}" if bits else ""
+            lines.append(f"    {m.name}: ClassVar[int] = {m.discriminant}{note}")
+        lines.append("")
+        lines.append("    @classmethod")
+        lines.append("    def name_of(cls, value: int) -> str:")
+        lines.append("        return {")
+        for m in enum.members:
+            lines.append(f"            {m.discriminant}: {m.name!r},")
+        lines.append("        }.get(int(value), f\"<unknown {int(value)}>\")")
+        lines.append("")
+        lines.append(f"{enum.name}_SZ: int = {enum.size}")
         return lines
 
     # ── Traits ────────────────────────────────────────────────────────────
@@ -278,15 +346,22 @@ class PythonGenerator(LangGenerator):
 
         return lines
 
+    def _enum_repr(self, type_name: str) -> str | None:
+        """If this type is a schema enum, the primitive it is represented as."""
+        enum = self.meta.meta_enums.get(type_name.strip())
+        return enum.repr_type if enum else None
+
     def _field_default(self, f: MetaField) -> str:
         t = f.type_name.strip()
+        t = self._enum_repr(t) or t
         if t in PRIMITIVE_TYPES:
             return " = 0"
-        if t in self.meta.meta_enums:
-            e = self.meta.meta_enums[t]
-            default_member = next((m for m in e.members if m.is_default), e.members[0])
-            return f" = {t}.{default_member.name}"
-        # Byte alias or struct — default to empty bytes
+        # A nested struct must default to an instance of that struct, not raw
+        # bytes: pack() calls .pack() on it. The lambda defers the name lookup
+        # until instantiation, by which point the top-level alias exists.
+        if t in self.meta.meta_structs:
+            return f" = field(default_factory=lambda: {t}())"
+        # Byte alias — default to empty bytes
         sz = self.meta.type_sizes.get(t)
         if sz is not None:
             return f" = field(default_factory=lambda: bytes({sz}))"
@@ -336,6 +411,13 @@ class PythonGenerator(LangGenerator):
         # unpack
         lines.append("    @classmethod")
         lines.append(f"    def unpack(cls, data: bytes) -> \"{struct.name}\":")
+        # Short input must fail loudly: the byte-alias field slices below
+        # would otherwise silently produce truncated key material.
+        lines.append("        if len(data) < cls.SIZE:")
+        lines.append(
+            "            raise ValueError("
+            f"f\"{struct.name}: got {{len(data)}} bytes, SIZE is {{cls.SIZE}}\")"
+        )
         lines.append("        offset = 0")
         for f in struct.fields:
             lines += self._field_unpack_lines(f, indent="        ")
@@ -344,8 +426,8 @@ class PythonGenerator(LangGenerator):
 
     def _field_pack_expr(self, f: MetaField) -> str:
         t = f.type_name.strip()
-        if t in self.meta.meta_enums:
-            t = self.meta.meta_enums[t].repr_type
+        # Enums are flat values over their repr type on the wire.
+        t = self._enum_repr(t) or t
         if t == "u8":
             return f"_struct.pack('<B', self.{f.name})"
         elif t == "u16":
@@ -358,6 +440,8 @@ class PythonGenerator(LangGenerator):
             return f"self.{f.name}.to_bytes(16, 'little')"
         elif t == "bool":
             return f"_struct.pack('<B', 1 if self.{f.name} else 0)"
+        elif t in SIGNED_STRUCT_FMT:
+            return f"_struct.pack('{SIGNED_STRUCT_FMT[t]}', self.{f.name})"
         else:
             # byte alias or nested struct — already bytes
             sz = self.meta.type_sizes.get(t)
@@ -368,40 +452,35 @@ class PythonGenerator(LangGenerator):
     def _field_unpack_lines(self, f: MetaField, indent: str) -> list[str]:
         lines = []
         t = f.type_name.strip()
-        enum_type = None
-        if t in self.meta.meta_enums:
-            enum_type = t
-            t = self.meta.meta_enums[t].repr_type
-
+        t = self._enum_repr(t) or t
         if t == "u8":
-            val_expr = "data[offset]"
-            offset_inc = 1
+            lines.append(f"{indent}{f.name} = data[offset]")
+            lines.append(f"{indent}offset += 1")
         elif t == "u16":
-            val_expr = "_struct.unpack_from('<H', data, offset)[0]"
-            offset_inc = 2
+            lines.append(f"{indent}{f.name} = _struct.unpack_from('<H', data, offset)[0]")
+            lines.append(f"{indent}offset += 2")
         elif t == "u32":
-            val_expr = "_struct.unpack_from('<I', data, offset)[0]"
-            offset_inc = 4
+            lines.append(f"{indent}{f.name} = _struct.unpack_from('<I', data, offset)[0]")
+            lines.append(f"{indent}offset += 4")
         elif t == "u64":
-            val_expr = "_struct.unpack_from('<Q', data, offset)[0]"
-            offset_inc = 8
+            lines.append(f"{indent}{f.name} = _struct.unpack_from('<Q', data, offset)[0]")
+            lines.append(f"{indent}offset += 8")
         elif t == "u128":
-            val_expr = "int.from_bytes(data[offset:offset+16], 'little')"
-            offset_inc = 16
+            lines.append(f"{indent}{f.name} = int.from_bytes(data[offset:offset+16], 'little')")
+            lines.append(f"{indent}offset += 16")
         elif t == "bool":
-            val_expr = "data[offset] != 0"
-            offset_inc = 1
+            lines.append(f"{indent}{f.name} = data[offset] != 0")
+            lines.append(f"{indent}offset += 1")
+        elif t in SIGNED_STRUCT_FMT:
+            lines.append(f"{indent}{f.name} = _struct.unpack_from('{SIGNED_STRUCT_FMT[t]}', data, offset)[0]")
+            lines.append(f"{indent}offset += {PRIMITIVE_TYPES[t]}")
         else:
             sz = self.meta.type_sizes.get(t)
             if sz and t in self.meta.meta_structs:
-                val_expr = f"{t}.unpack(data[offset:offset+{sz}])"
+                lines.append(f"{indent}{f.name} = {t}.unpack(data[offset:offset+{sz}])")
             else:
-                val_expr = f"bytes(data[offset:offset+{sz}])"
-            offset_inc = sz
-
-        assign_expr = f"{enum_type}({val_expr})" if enum_type else val_expr
-        lines.append(f"{indent}{f.name} = {assign_expr}")
-        lines.append(f"{indent}offset += {offset_inc}")
+                lines.append(f"{indent}{f.name} = bytes(data[offset:offset+{sz}])")
+            lines.append(f"{indent}offset += {sz}")
         return lines
 
     def _from_bytes_args(self, struct: MetaStruct) -> str:
@@ -411,6 +490,25 @@ class PythonGenerator(LangGenerator):
 
     def emit_pack_helpers(self) -> list[str]:
         return [
+            "def _check_status(result: bytes, expected_size: int = None) -> bytes:",
+            f'    """Strip the uniform {STATUS_PREFIX_SZ}-byte status prefix, raising on a non-Ok code.',
+            "",
+            "    A malformed reply must never read as success: a result shorter than",
+            "    the prefix, and an Ok payload that is not exactly the declared size,",
+            "    both raise Unspecified rather than yielding short or shifted bytes.",
+            "    expected_size is None only for variable-length returns, which are",
+            "    delimited by the payload extent.",
+            '    """',
+            f"    if len(result) < {STATUS_PREFIX_SZ}:",
+            "        raise AloecryptStatusError(StatusCode.Unspecified)",
+            "    status = _struct.unpack_from('<H', result, 0)[0]",
+            "    if status != 0:",
+            "        raise AloecryptStatusError(status)",
+            f"    payload = bytes(result[{STATUS_PREFIX_SZ}:])",
+            "    if expected_size is not None and len(payload) != expected_size:",
+            "        raise AloecryptStatusError(StatusCode.Unspecified)",
+            "    return payload",
+            "",
             "def _pack_varlen(data: bytes) -> bytes:",
             "    return _struct.pack('<I', len(data)) + data",
             "",
@@ -460,6 +558,8 @@ class PythonGenerator(LangGenerator):
 
         sig = f"def {call.export_name}({', '.join(py_params)}) -> {ret_py}:"
         lines.append(sig)
+        if call.fallible:
+            lines.append('    """Raises AloecryptStatusError on a non-Ok status."""')
 
         # Pack args
         lines.append("    parts: list[bytes] = []")
@@ -470,36 +570,58 @@ class PythonGenerator(LangGenerator):
             lines.append(f"    parts.append({self._pack_expr(pf)})")
 
         lines.append("    payload = b''.join(parts)")
-        lines.append(f"    result = plugin.call('{call.export_name}', payload)")
+        # Every export carries the status prefix; _check_status strips it or
+        # raises, and length-checks fixed-size payloads so a truncated Ok
+        # reply can never decode as short key material.
+        expected = self._expected_payload_size(call)
+        expected_arg = "" if expected is None else f", {expected}"
+        lines.append(
+            f"    result = _check_status(plugin.call('{call.export_name}', payload){expected_arg})"
+        )
 
         # Unpack result
+        rt = (call.return_type or "").strip()
+        inner = strip_ref(rt).strip()
         if call.return_type is None:
             lines.append("    return")
-        elif call.return_type == "bool":
+        elif rt == "bool":
             lines.append("    return result[0] != 0")
-        elif call.return_type == "Self" and call.struct_name:
+        elif inner == "Self" and call.struct_name:
             lines.append(f"    return {call.struct_name}.unpack(result)")
-        elif call.return_type.startswith("&"):
-            inner = strip_ref(call.return_type)
-            if inner in self.meta.meta_structs:
-                lines.append(f"    return {inner}.unpack(result)")
-            else:
-                lines.append("    return bytes(result)")
-        elif call.return_type in self.meta.meta_structs:
-            lines.append(f"    return {call.return_type}.unpack(result)")
-        elif call.return_type in self.meta.meta_enums:
-            e = self.meta.meta_enums[call.return_type]
-            if e.repr_type == "u8":
-                lines.append(f"    return {call.return_type}(result[0])")
-            else:
-                fmt = {'u16': '<H', 'u32': '<I', 'u64': '<Q'}.get(e.repr_type, '<I')
-                lines.append(f"    return {call.return_type}(_struct.unpack('{fmt}', result)[0])")
+        elif rt == "&str":
+            lines.append("    return result.decode('utf-8')")
+        elif rt == "&[u8]":
+            lines.append("    return bytes(result)")
+        elif inner in ("usize", "u8", "u16", "u32", "u64", "u128"):
+            lines.append("    return int.from_bytes(result, 'little')")
+        elif inner in SIGNED_STRUCT_FMT:
+            lines.append("    return int.from_bytes(result, 'little', signed=True)")
+        elif inner in self.meta.meta_enums:
+            lines.append(f"    return {inner}(int.from_bytes(result, 'little'))")
+        elif inner in self.meta.meta_structs:
+            lines.append(f"    return {inner}.unpack(result)")
         else:
             # byte alias
             lines.append("    return bytes(result)")
 
-
         return lines
+
+    def _expected_payload_size(self, call: WireCall) -> int | None:
+        """The exact payload length an Ok reply must carry, or None for the
+        variable-length returns (&str, &[u8]) that the payload extent delimits."""
+        rt = (call.return_type or "").strip()
+        if not rt:
+            return 0  # void: an Ok reply carries no payload at all
+        if rt in ("&str", "&[u8]"):
+            return None
+        if rt == "bool":
+            return 1
+        inner = strip_ref(rt).strip()
+        if inner == "Self":
+            return self.meta.type_sizes.get(call.struct_name)
+        if inner == "usize":
+            return USIZE_WIRE_SZ
+        return self.meta.type_sizes.get(inner)
 
     def _pack_expr(self, pf: PackedField) -> str:
         t = pf.type_str
@@ -508,8 +630,10 @@ class PythonGenerator(LangGenerator):
                 return f"_pack_str({pf.name})"
             return f"_pack_varlen({pf.name})"
         inner = strip_ref(t)
-        if inner in self.meta.meta_enums:
-            inner = self.meta.meta_enums[inner].repr_type
+        # Enums are flat values over their repr type on the wire.
+        inner = self._enum_repr(inner) or inner
+        if inner in SIGNED_STRUCT_FMT:
+            return f"_struct.pack('{SIGNED_STRUCT_FMT[inner]}', {pf.name})"
         if inner == "u32":
             return f"_pack_u32({pf.name})"
         elif inner == "u64":
@@ -554,87 +678,14 @@ class PythonGenerator(LangGenerator):
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 def main():
-    GEN_DIR.mkdir(parents=True, exist_ok=True)
-    API_DIR.mkdir(parents=True, exist_ok=True)
-
     meta = load_meta(".generated/api_core_merged.json")
     gen = PythonGenerator(meta)
     output = gen.generate()
+    GEN_DIR.mkdir(parents=True, exist_ok=True)
     outpath = GEN_DIR / "aloecrypt_core.py"
     outpath.write_text(output)
     print(f"Generated {outpath} ({len(output)} bytes)")
-    
-    # ==========================
-    outpath = GEN_DIR / "constants.py"
-    # ==========================
-    lines = []
-    lines.append(gen.section_comment("Constants"))
-    lines += gen.emit_constants(gen.meta.meta_consts)
-    lines.append("")
-    outpath.write_text("\n".join(lines))
 
-    # ==========================
-    outpath = GEN_DIR / "types.py"
-    # ==========================
-    lines = []
-    
-    # Byte aliases
-    lines.append(gen.section_comment("Byte Aliases"))
-    lines += gen.emit_byte_aliases(gen.meta.meta_byte_aliases)
-    lines.append("")
 
-    # Enums
-    lines.append(gen.section_comment("Enums"))
-    lines += gen.emit_enums(gen.meta.meta_enums)
-    lines.append("")
-    outpath.write_text("\n".join(lines))
-    
-    # ==========================
-    outpath = GEN_DIR / "traits.py"
-    # ==========================
-    lines = []
-    
-    # Traits / Interfaces
-    lines.append(gen.section_comment("Traits"))
-    for trait in gen.meta.meta_traits.values():
-        lines += gen.emit_trait(trait)
-        lines.append("")
-    outpath.write_text("\n".join(lines))
-    
-    # Call wrappers (before namespaces so struct methods can delegate)
-    # ==========================
-    outpath = GEN_DIR / "ffi.py"
-    # ==========================
-    lines = []
-    
-    lines.append(gen.section_comment("Wire Format Helpers"))
-    lines += gen.emit_pack_helpers()
-    lines.append("")
-
-    lines.append(gen.section_comment("Plugin Call Wrappers"))
-    for call in gen.wire_calls:
-        lines += gen.emit_call_wrapper(call)
-        lines.append("")
-
-    outpath.write_text("\n".join(lines))
-    
-    
-    
-    outpath = API_DIR / f"__init__.py"
-    outpath.write_text("\n")
-
-    for ns in meta.namespaces:
-        
-        outpath = API_DIR / f"{ns}.py"
-        
-        lines = []
-        outpath.write_text("\n".join(lines))
-    
-    
-    
-    # lines.append(self.section_comment("Namespaces"))
-    # lines += self.emit_namespace_wrappers()
-    # lines.append("")
-    
 if __name__ == "__main__":
     main()

@@ -10,11 +10,28 @@ Wire Format:
   - Variable-length params (&[u8], &str): u32 LE length prefix + bytes
   - Instance methods: struct bytes first, then params in declaration order
   - Static methods: params only
-  - Returns: raw bytes (structs via zerocopy, primitives LE, bool as u8)
+  - Returns: a 2-byte LE StatusCode prefix, then the payload
+    (structs via zerocopy, primitives LE, bool as u8)
+
+The status prefix is uniform: every export carries it, and an infallible
+export always sends StatusCode.Ok (0). On any other status the payload is
+ABSENT -- not zeroed -- so a caller that skips the check gets a short read
+rather than plausible-looking bytes. Only functions marked fallible in the
+schema can actually send a non-Ok status.
 
 Export naming: {namespace}___{struct_lower}__{fn_name}  (instance/static trait methods)
               {namespace}___{fn_name}                   (standalone functions)
+
+Fixed-size returns are length-checked by the bindings: an Ok reply whose
+payload is not exactly the declared size decodes as Unspecified, never as
+success. Variable-length returns (&str, &[u8]) are delimited by the payload
+extent and are the only unchecked case. usize returns cross as u64 LE.
 """
+
+STATUS_PREFIX_SZ = 2
+# The wire width of a usize return. The schema uses usize only for lengths;
+# pinning it to 8 bytes keeps the format identical on 32- and 64-bit hosts.
+USIZE_WIRE_SZ = 8
 
 from dataclasses import dataclass
 from typing import Optional
@@ -47,10 +64,11 @@ class WireCall:
     instance_field: Optional[PackedField]  # The &self struct, if instance method
     param_fields: list[PackedField]
     return_type: Optional[str]
-    return_size: Optional[int]  # None if bool (1) or void (0) or varlen
+    return_size: Optional[int]  # Payload size after the status prefix; None if bool (1) or void (0) or varlen
     is_mut_self: bool
     has_varlen_params: bool  # True if any param is variable-length
     module_name: Optional[str]  # For standalone fns: e.g. "hash" from "hash_api"
+    fallible: bool = False  # Can send a non-Ok status; infallible exports always send Ok
 
 
 def export_name_method(namespace: str, struct_name: str, fn_name: str) -> str:
@@ -142,11 +160,16 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
             if ret_type:
                 if ret_type == "bool":
                     ret_size = 1
-                elif ret_type == "Self":
-                    ret_size = struct_sz
                 else:
                     inner = ret_type.lstrip("&").strip()
-                    ret_size = meta.type_sizes.get(inner)
+                    # "&Self" strips to "Self", which has no type_sizes entry;
+                    # both spellings mean this struct.
+                    if inner == "Self":
+                        ret_size = struct_sz
+                    elif inner == "usize":
+                        ret_size = USIZE_WIRE_SZ
+                    else:
+                        ret_size = meta.type_sizes.get(inner)
 
             calls.append(WireCall(
                 export_name=ename, namespace=impl.namespace,
@@ -154,7 +177,7 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
                 instance_field=instance_field, param_fields=param_fields,
                 return_type=ret_type, return_size=ret_size,
                 is_mut_self=is_mut, has_varlen_params=has_varlen,
-                module_name=None))
+                module_name=None, fallible=func.fallible))
 
     # ── Standalone functions ──
     for func in meta.meta_functions.values():
@@ -181,7 +204,10 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
                 ret_size = 1
             else:
                 inner = ret_type.lstrip("&").strip()
-                ret_size = meta.type_sizes.get(inner)
+                if inner == "usize":
+                    ret_size = USIZE_WIRE_SZ
+                else:
+                    ret_size = meta.type_sizes.get(inner)
 
         calls.append(WireCall(
             export_name=ename, namespace=ns,
@@ -189,6 +215,6 @@ def build_wire_calls(meta: APIMetaData) -> list[WireCall]:
             instance_field=None, param_fields=param_fields,
             return_type=ret_type, return_size=ret_size,
             is_mut_self=False, has_varlen_params=has_varlen,
-            module_name=mod_name))
+            module_name=mod_name, fallible=func.fallible))
 
     return calls

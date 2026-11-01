@@ -1,3 +1,8 @@
+# SUPERSEDED — build.rs performs this merge natively (see merge_docs() there).
+# Nothing runs this file any more; `make merge_docs` now just builds the crate.
+# Retained for reference only. If you change the merge semantics, change build.rs
+# — this script is not consulted and will drift.
+#
 # Usage: jq -s -f merge_docs.jq api_core.json api_core_docs.json > api_core_merged.json
 #
 # Strategy: for each module, for each array field (sz_consts, byte_aliases, empty_consts,

@@ -1,18 +1,15 @@
-use super::hash_api::*;
 use super::otp_api::*;
 use super::*;
 
 use data_encoding::BASE32_NOPAD;
 use url::Url;
 
+// The hash types are used only as HMAC parameters, so the Digest traits
+// themselves are not needed in scope.
 use hmac::{Hmac, KeyInit, Mac};
-use sha1::{Digest as Sha1Digest, Sha1};
-use sha2::{Digest as Sha2Digest, Sha256, Sha512};
-use sha3::{Digest as Sha3Digest, Keccak256, Sha3_256};
-
-impl OtpCredential {
-    // pub fn valid(&self) -> bool { }
-}
+use sha1::Sha1;
+use sha2::{Sha256, Sha512};
+use sha3::{Keccak256, Sha3_256};
 
 impl IOtpCredential for OtpCredential {
     fn empty() -> Self {
@@ -60,7 +57,11 @@ impl IOtpCredential for OtpCredential {
 
     fn from_string(input_str: &str) -> Self {
         let s = input_str.trim();
-        let s = if s.len() >= 2 && ((s.starts_with('\'') && s.ends_with('\'')) || (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('`') && s.ends_with('`'))) {
+        let s = if s.len() >= 2
+            && ((s.starts_with('\'') && s.ends_with('\''))
+                || (s.starts_with('"') && s.ends_with('"'))
+                || (s.starts_with('`') && s.ends_with('`')))
+        {
             // unwrap quoted otp input
             s[1..s.len() - 1].trim()
         } else {
@@ -72,7 +73,9 @@ impl IOtpCredential for OtpCredential {
         }
 
         // Branch 1: bare base32 — only [A-Za-z2-7=]
-        if s.bytes().all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'2'..=b'7' | b'=')) {
+        if s.bytes()
+            .all(|b| matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'2'..=b'7' | b'='))
+        {
             return parse_secret_only(s);
         }
 
@@ -93,21 +96,27 @@ impl IOtpCredential for OtpCredential {
             // Prepend "otpauth:"
             let prefix = b"otpauth:";
             let total = prefix.len() + 2 + rest.len(); // "otpauth:" + "//" + rest
-            if total > 256 { return OtpCredential::invalid("uri too long", s); }
+            if total > 256 {
+                return OtpCredential::invalid("uri too long", s);
+            }
             uri_buf[..prefix.len()].copy_from_slice(prefix);
             uri_buf[prefix.len()..prefix.len() + 2].copy_from_slice(b"//");
             uri_buf[prefix.len() + 2..total].copy_from_slice(rest.as_bytes());
             uri_len = total;
         } else {
             // Must start with otpauth:// case-insensitively
-            if s.len() < 10 { return OtpCredential::invalid("invalid protocol string", s); }
+            if s.len() < 10 {
+                return OtpCredential::invalid("invalid protocol string", s);
+            }
             let scheme_end = match s.find("://") {
                 Some(i) => i,
                 None => return OtpCredential::invalid("invalid protocol string", s),
             };
             let scheme = &s[..scheme_end];
             // Compare scheme case-insensitively
-            if scheme.len() != 7 { return OtpCredential::invalid("invalid protocol string", s); }
+            if scheme.len() != 7 {
+                return OtpCredential::invalid("invalid protocol string", s);
+            }
             let mut scheme_lower = [0u8; 7];
             for (i, b) in scheme.bytes().enumerate() {
                 scheme_lower[i] = b.to_ascii_lowercase();
@@ -117,7 +126,9 @@ impl IOtpCredential for OtpCredential {
             }
             let rest = &s[scheme_end..]; // includes "://..."
             let total = 7 + rest.len();
-            if total > 256 { return OtpCredential::invalid("uri too long", s); }
+            if total > 256 {
+                return OtpCredential::invalid("uri too long", s);
+            }
             uri_buf[..7].copy_from_slice(b"otpauth");
             uri_buf[7..total].copy_from_slice(rest.as_bytes());
             uri_len = total;
@@ -131,20 +142,20 @@ impl IOtpCredential for OtpCredential {
         parse_full_uri(uri_str, s)
     }
 
-    fn to_uri(&self) -> VarString511 {
+    fn to_uri(&self) -> VarString510 {
         let otp_type_str: &str = match self.otp_type.into() {
             OtpTypeEnum::TOTP => "totp",
             OtpTypeEnum::HOTP => "hotp",
-            OtpTypeEnum::UNKNOWN => return VarString511::from_str(self.label.to_str()),
+            OtpTypeEnum::UNKNOWN => return VarString510::from_str(self.label.to_str()),
         };
 
         let algo_str: &str = match self.algorithm.into() {
-            OtpAlgorithmEnum::SHA1     => "SHA1",
-            OtpAlgorithmEnum::SHA256   => "SHA256",
-            OtpAlgorithmEnum::SHA512   => "SHA512",
+            OtpAlgorithmEnum::SHA1 => "SHA1",
+            OtpAlgorithmEnum::SHA256 => "SHA256",
+            OtpAlgorithmEnum::SHA512 => "SHA512",
             OtpAlgorithmEnum::SHA3_256 => "SHA3-256",
-            OtpAlgorithmEnum::KECCAK256=> "KECCAK256",
-            OtpAlgorithmEnum::UNKNOWN  => return VarString511::from_str(self.label.to_str()),
+            OtpAlgorithmEnum::KECCAK256 => "KECCAK256",
+            OtpAlgorithmEnum::UNKNOWN => return VarString510::from_str(self.label.to_str()),
         };
 
         // Encode the secret to base32
@@ -154,11 +165,12 @@ impl IOtpCredential for OtpCredential {
         BASE32_NOPAD.encode_mut(secret_bytes, &mut secret_b32[..secret_b32_len]);
         let secret_str = match core::str::from_utf8(&secret_b32[..secret_b32_len]) {
             Ok(s) => s,
-            Err(_) => return VarString511::from_str(self.label.to_str()),
+            Err(_) => return VarString510::from_str(self.label.to_str()),
         };
 
         let label = self.label.to_str();
         let issuer = self.issuer.to_str();
+        let account_name = self.account_name.to_str();
         let digits = self.digits;
         let period = self.period;
         let counter = self.counter;
@@ -166,28 +178,60 @@ impl IOtpCredential for OtpCredential {
 
         // Build into a 512-byte stack buffer. Try full URI first, then drop
         // issuer param, then minimal form.
+        const VARSTRING_MAX: usize = 510; // VarString510 payload capacity
         let mut buf = [0u8; 512];
 
-        // Helper: write URI into buf, returns Some(len) or None on overflow.
-        // Full form: otpauth://TYPE/ISSUER:LABEL?secret=S&issuer=I&digits=D&period=P&t0=T0
-        //        or: otpauth://TYPE/ISSUER:LABEL?secret=S&issuer=I&digits=D&counter=C
+        // Full form: otpauth://TYPE/ISSUER:ACCOUNT?secret=S&issuer=I&digits=D&period=P&t0=T0
+        //        or: otpauth://TYPE/ISSUER:ACCOUNT?secret=S&issuer=I&digits=D&counter=C
 
-        for pass in 0u8..3 {
+        'pass: for pass in 0u8..3 {
             let mut pos = 0usize;
 
             macro_rules! write_str {
                 ($s:expr) => {{
                     let b = $s.as_bytes();
-                    if pos + b.len() > 511 { pos = 512; break; }
+                    // overflow: fall back to the next, shorter form
+                    if pos + b.len() > VARSTRING_MAX {
+                        continue 'pass;
+                    }
                     buf[pos..pos + b.len()].copy_from_slice(b);
                     pos += b.len();
+                }};
+            }
+            // Percent-encodes everything outside RFC 3986's unreserved set
+            // (plus '@'), so an issuer or account name containing ':' or '&'
+            // re-parses as the same fields.
+            macro_rules! write_escaped {
+                ($s:expr) => {{
+                    for &c in $s.as_bytes() {
+                        if c.is_ascii_alphanumeric()
+                            || matches!(c, b'-' | b'.' | b'_' | b'~' | b'@')
+                        {
+                            if pos + 1 > VARSTRING_MAX {
+                                continue 'pass;
+                            }
+                            buf[pos] = c;
+                            pos += 1;
+                        } else {
+                            if pos + 3 > VARSTRING_MAX {
+                                continue 'pass;
+                            }
+                            const HEX: &[u8; 16] = b"0123456789ABCDEF";
+                            buf[pos] = b'%';
+                            buf[pos + 1] = HEX[(c >> 4) as usize];
+                            buf[pos + 2] = HEX[(c & 0x0f) as usize];
+                            pos += 3;
+                        }
+                    }
                 }};
             }
             macro_rules! write_u64 {
                 ($v:expr) => {{
                     let mut tmp = [0u8; 20];
                     let n = fmt_u64($v, &mut tmp);
-                    if pos + n > 511 { pos = 512; break; }
+                    if pos + n > VARSTRING_MAX {
+                        continue 'pass;
+                    }
                     buf[pos..pos + n].copy_from_slice(&tmp[..n]);
                     pos += n;
                 }};
@@ -197,13 +241,17 @@ impl IOtpCredential for OtpCredential {
             write_str!(otp_type_str);
             write_str!("/");
 
-            // pass 0 and 1: include label prefix if issuer non-empty
-            if !issuer.is_empty() && pass < 2 {
-                write_str!(issuer);
-                write_str!(":");
-            }
-            if !label.is_empty() {
-                write_str!(label);
+            // Path is ISSUER:ACCOUNT. `label` is the raw path as parsed and
+            // may already carry the issuer prefix, so it is only the fallback
+            // when there is no account name. Pass 2 drops the issuer prefix.
+            if !account_name.is_empty() {
+                if !issuer.is_empty() && pass < 2 {
+                    write_escaped!(issuer);
+                    write_str!(":");
+                }
+                write_escaped!(account_name);
+            } else if !label.is_empty() {
+                write_escaped!(label);
             }
 
             write_str!("?secret=");
@@ -232,34 +280,41 @@ impl IOtpCredential for OtpCredential {
             // pass 0: also append &issuer=
             if pass == 0 && !issuer.is_empty() {
                 write_str!("&issuer=");
-                write_str!(issuer);
+                write_escaped!(issuer);
             }
 
-            if pos <= 511 {
-                return VarString511::from_str(
-                    core::str::from_utf8(&buf[..pos]).unwrap_or("")
-                );
+            if pos <= VARSTRING_MAX {
+                return VarString510::from_str(core::str::from_utf8(&buf[..pos]).unwrap_or(""));
             }
-            // overflow: try next pass
         }
 
-        VarString511::empty()
+        VarString510::empty()
     }
 
     fn generate(&self, current: u64) -> OtpResult {
         let otp_type: OtpTypeEnum = self.otp_type.into();
         let algo: OtpAlgorithmEnum = self.algorithm.into();
 
-        if matches!(otp_type, OtpTypeEnum::UNKNOWN) { return [-1i8; OTP_RESULT_SZ]; }
-        if matches!(algo, OtpAlgorithmEnum::UNKNOWN) { return [-1i8; OTP_RESULT_SZ]; }
+        if matches!(otp_type, OtpTypeEnum::UNKNOWN) {
+            return [-1i8; OTP_RESULT_SZ];
+        }
+        if matches!(algo, OtpAlgorithmEnum::UNKNOWN) {
+            return [-1i8; OTP_RESULT_SZ];
+        }
 
         let secret = self.secret.to_byte_arr();
-        if secret.is_empty() { return [-1i8; OTP_RESULT_SZ]; }
+        if secret.is_empty() {
+            return [-1i8; OTP_RESULT_SZ];
+        }
 
         // Derive counter value
         let hotp_counter: u64 = match otp_type {
             OtpTypeEnum::TOTP => {
-                let period = if self.period <= 0 { 30u64 } else { self.period as u64 };
+                let period = if self.period <= 0 {
+                    30u64
+                } else {
+                    self.period as u64
+                };
                 (current.saturating_sub(self.t0)) / period
             }
             OtpTypeEnum::HOTP => current,
@@ -307,25 +362,25 @@ impl IOtpCredential for OtpCredential {
 
         // RFC 4226 dynamic truncation
         let digest_len: usize = match algo {
-            OtpAlgorithmEnum::SHA1     => 20,
-            OtpAlgorithmEnum::SHA256   => 32,
-            OtpAlgorithmEnum::SHA512   => 64,
+            OtpAlgorithmEnum::SHA1 => 20,
+            OtpAlgorithmEnum::SHA256 => 32,
+            OtpAlgorithmEnum::SHA512 => 64,
             OtpAlgorithmEnum::SHA3_256 => 32,
-            OtpAlgorithmEnum::KECCAK256=> 32,
-            OtpAlgorithmEnum::UNKNOWN  => return [-1i8; OTP_RESULT_SZ],
+            OtpAlgorithmEnum::KECCAK256 => 32,
+            OtpAlgorithmEnum::UNKNOWN => return [-1i8; OTP_RESULT_SZ],
         };
 
         let offset = (digest[digest_len - 1] & 0x0f) as usize;
-        let p = ((digest[offset]     as u32 & 0x7f) << 24)
-              | ((digest[offset + 1] as u32)         << 16)
-              | ((digest[offset + 2] as u32)         <<  8)
-              |  (digest[offset + 3] as u32);
+        let p = ((digest[offset] as u32 & 0x7f) << 24)
+            | ((digest[offset + 1] as u32) << 16)
+            | ((digest[offset + 2] as u32) << 8)
+            | (digest[offset + 3] as u32);
 
         // digits: saturate 33-255 to 32, clamp to 1 minimum
         let digits = match self.digits {
-            0        => 6u8,  // default
-            1..=32   => self.digits,
-            _        => 32u8,
+            0 => 6u8, // default
+            1..=32 => self.digits,
+            _ => 32u8,
         };
 
         // Extract individual decimal digits, left-packed, -1 padded
@@ -338,7 +393,9 @@ impl IOtpCredential for OtpCredential {
         if d <= 9 {
             // Standard path: p % 10^d
             let mut modulus = 1u32;
-            for _ in 0..d { modulus = modulus.saturating_mul(10); }
+            for _ in 0..d {
+                modulus = modulus.saturating_mul(10);
+            }
             let code = p % modulus;
             // left-pack digits
             let mut tmp = [0u8; 9];
@@ -367,24 +424,40 @@ impl IOtpCredential for OtpCredential {
         result
     }
 
-    // Builder Functions
-    fn with_counter(      &mut self, counter:      i64          ) { self.counter = counter;                                 }
-    fn with_period(       &mut self, period:       i64          ) { self.period = period;                                   }
-    fn with_t0(           &mut self, t0:           u64          ) { self.t0 = t0;                                           }
-    fn with_secret(       &mut self, secret:       &[u8]        ) { self.secret = VarByte255::from_byte_arr(secret);        }
-    fn with_algorithm(    &mut self, algorithm:    OtpAlgorithm ) { self.algorithm = algorithm;                             }
-    fn with_issuer(       &mut self, issuer:       &str         ) { self.issuer = VarChar255::from_str(issuer);             }
-    fn with_account_name( &mut self, account_name: &str         ) { self.account_name = VarChar255::from_str(account_name); }
-    fn with_label(        &mut self, label:        &str         ) { self.label = VarChar255::from_str(label);               }
-
-    // fn with_counter(      &self, counter:      i64          ) -> Self { let mut otp = *self; otp.counter = counter;                                 return otp; }
-    // fn with_period(       &self, period:       i64          ) -> Self { let mut otp = *self; otp.period = period;                                   return otp; }
-    // fn with_t0(           &self, t0:           u64          ) -> Self { let mut otp = *self; otp.t0 = t0;                                           return otp; }
-    // fn with_secret(       &self, secret:       &[u8]        ) -> Self { let mut otp = *self; otp.secret = VarByte255::from_byte_arr(secret);        return otp; }
-    // fn with_algorithm(    &self, algorithm:    OtpAlgorithm ) -> Self { let mut otp = *self; otp.algorithm = algorithm;                             return otp; }
-    // fn with_issuer(       &self, issuer:       &str         ) -> Self { let mut otp = *self; otp.issuer = VarChar255::from_str(issuer);             return otp; }
-    // fn with_account_name( &self, account_name: &str         ) -> Self { let mut otp = *self; otp.account_name = VarChar255::from_str(account_name); return otp; }
-    // fn with_label(        &self, label:        &str         ) -> Self { let mut otp = *self; otp.label = VarChar255::from_str(label);               return otp; }
+    // Builder functions. Each returns the updated credential so the change
+    // survives a wire call, matching IAloeRng's with_* convention.
+    fn with_counter(&mut self, counter: i64) -> &Self {
+        self.counter = counter;
+        self
+    }
+    fn with_period(&mut self, period: i64) -> &Self {
+        self.period = period;
+        self
+    }
+    fn with_t0(&mut self, t0: u64) -> &Self {
+        self.t0 = t0;
+        self
+    }
+    fn with_secret(&mut self, secret: &[u8]) -> &Self {
+        self.secret = VarByte255::from_byte_arr(secret);
+        self
+    }
+    fn with_algorithm(&mut self, algorithm: OtpAlgorithm) -> &Self {
+        self.algorithm = algorithm;
+        self
+    }
+    fn with_issuer(&mut self, issuer: &str) -> &Self {
+        self.issuer = VarChar255::from_str(issuer);
+        self
+    }
+    fn with_account_name(&mut self, account_name: &str) -> &Self {
+        self.account_name = VarChar255::from_str(account_name);
+        self
+    }
+    fn with_label(&mut self, label: &str) -> &Self {
+        self.label = VarChar255::from_str(label);
+        self
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,25 +468,39 @@ fn decode_base32(secret_str: &str, out: &mut [u8; 255]) -> Option<usize> {
     let mut upper = [0u8; 255];
     let stripped = {
         let b = secret_str.trim_end_matches('=').as_bytes();
-        if b.len() > 255 { return None; }
+        if b.len() > 255 {
+            return None;
+        }
         for (i, &byte) in b.iter().enumerate() {
             upper[i] = byte.to_ascii_uppercase();
         }
         &upper[..b.len()]
     };
     let decoded_len = BASE32_NOPAD.decode_len(stripped.len()).ok()?;
-    if decoded_len > 255 { return None; }
-    let n = BASE32_NOPAD.decode_mut(stripped, &mut out[..decoded_len]).ok()?;
+    if decoded_len > 255 {
+        return None;
+    }
+    let n = BASE32_NOPAD
+        .decode_mut(stripped, &mut out[..decoded_len])
+        .ok()?;
     Some(n)
 }
 
 fn shorthand_type_prefix(s: &str) -> Option<OtpTypeEnum> {
     let b = s.as_bytes();
-    if b.len() < 5 { return None; }
+    if b.len() < 5 {
+        return None;
+    }
     let mut lower5 = [0u8; 5];
-    for i in 0..5 { lower5[i] = b[i].to_ascii_lowercase(); }
-    if &lower5 == b"totp/" { return Some(OtpTypeEnum::TOTP); }
-    if &lower5 == b"hotp/" { return Some(OtpTypeEnum::HOTP); }
+    for i in 0..5 {
+        lower5[i] = b[i].to_ascii_lowercase();
+    }
+    if &lower5 == b"totp/" {
+        return Some(OtpTypeEnum::TOTP);
+    }
+    if &lower5 == b"hotp/" {
+        return Some(OtpTypeEnum::HOTP);
+    }
     None
 }
 
@@ -423,7 +510,9 @@ fn parse_secret_only(s: &str) -> OtpCredential {
         Some(n) => n,
         None => return OtpCredential::invalid("invalid base32 secret", s),
     };
-    if n < 10 { return OtpCredential::invalid("secret too short (min 10 bytes)", s); }
+    if n < 10 {
+        return OtpCredential::invalid("secret too short (min 10 bytes)", s);
+    }
     let mut cred = OtpCredential::empty();
     cred.otp_type = OtpTypeEnum::TOTP.into();
     cred.secret = VarByte255::from_byte_arr(&buf[..n]);
@@ -437,7 +526,7 @@ fn parse_secret_only(s: &str) -> OtpCredential {
 fn parse_shorthand(rest: &str, otp_type: OtpTypeEnum, raw: &str) -> OtpCredential {
     let (secret_str, query) = match rest.find('?') {
         Some(i) => (&rest[..i], Some(&rest[i + 1..])),
-        None    => (rest.trim(), None),
+        None => (rest.trim(), None),
     };
     let secret_str = secret_str.trim();
     let mut buf = [0u8; 255];
@@ -445,14 +534,22 @@ fn parse_shorthand(rest: &str, otp_type: OtpTypeEnum, raw: &str) -> OtpCredentia
         Some(n) => n,
         None => return OtpCredential::invalid("invalid base32 secret", raw),
     };
-    if n < 10 { return OtpCredential::invalid("secret too short (min 10 bytes)", raw); }
+    if n < 10 {
+        return OtpCredential::invalid("secret too short (min 10 bytes)", raw);
+    }
 
     let mut cred = OtpCredential::empty();
     cred.otp_type = otp_type.into();
     cred.secret = VarByte255::from_byte_arr(&buf[..n]);
     match otp_type {
-        OtpTypeEnum::TOTP => { cred.period = 30; cred.counter = -1; }
-        OtpTypeEnum::HOTP => { cred.counter = 0;  cred.period = -1; }
+        OtpTypeEnum::TOTP => {
+            cred.period = 30;
+            cred.counter = -1;
+        }
+        OtpTypeEnum::HOTP => {
+            cred.counter = 0;
+            cred.period = -1;
+        }
         _ => {}
     }
     cred.digits = 6;
@@ -468,7 +565,7 @@ fn parse_shorthand(rest: &str, otp_type: OtpTypeEnum, raw: &str) -> OtpCredentia
 
 fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     let url = match Url::parse(uri_str) {
-        Ok(u)  => u,
+        Ok(u) => u,
         Err(_) => return OtpCredential::invalid("failed to parse URI", raw),
     };
 
@@ -479,14 +576,14 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     let otp_type = match url.host_str() {
         Some("totp") => OtpTypeEnum::TOTP,
         Some("hotp") => OtpTypeEnum::HOTP,
-        _            => return OtpCredential::invalid("unknown otp type", raw),
+        _ => return OtpCredential::invalid("unknown otp type", raw),
     };
 
     // Raw path from the url crate still has percent-encoding intact
     let raw_path = url.path();
     let raw_label = match raw_path.strip_prefix('/') {
         Some(l) => l,
-        None    => return OtpCredential::invalid("missing label", raw),
+        None => return OtpCredential::invalid("missing label", raw),
     };
 
     if raw_label.contains('/') {
@@ -502,41 +599,44 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     let decoded_label = core::str::from_utf8(&label_buf[..label_len]).unwrap_or("");
 
     // Split issuer:account_name on first unencoded ':'
-    let mut issuer_buf   = [0u8; 255];
-    let mut account_buf  = [0u8; 255];
-    let (issuer_len, account_len) = split_label(
-        raw_label.as_bytes(), &mut issuer_buf, &mut account_buf
-    );
-    let label_issuer  = core::str::from_utf8(&issuer_buf[..issuer_len]).unwrap_or("");
-    let account_name  = core::str::from_utf8(&account_buf[..account_len]).unwrap_or("");
+    let mut issuer_buf = [0u8; 255];
+    let mut account_buf = [0u8; 255];
+    let (issuer_len, account_len) =
+        split_label(raw_label.as_bytes(), &mut issuer_buf, &mut account_buf);
+    let label_issuer = core::str::from_utf8(&issuer_buf[..issuer_len]).unwrap_or("");
+    let account_name = core::str::from_utf8(&account_buf[..account_len]).unwrap_or("");
 
     // Parse query parameters
     let query_str = url.query().unwrap_or("");
-    let mut secret_buf  = [0u8; 255];
-    let mut secret_len  = 0usize;
-    let mut has_secret  = false;
+    let mut secret_buf = [0u8; 255];
+    let mut secret_len = 0usize;
+    let mut has_secret = false;
     let mut param_issuer_buf = [0u8; 255];
     let mut param_issuer_len = 0usize;
     let mut has_param_issuer = false;
-    let mut period:  Option<i64> = None;
-    let mut t0:      Option<u64> = None;
+    let mut period: Option<i64> = None;
+    let mut t0: Option<u64> = None;
     let mut counter: Option<i64> = None;
-    let mut digits:  Option<u8>  = None;
+    let mut digits: Option<u8> = None;
     let mut algorithm = OtpAlgorithmEnum::SHA1;
 
     for pair in query_str.split('&') {
-        if pair.is_empty() { continue; }
+        if pair.is_empty() {
+            continue;
+        }
         let (key, val) = match pair.find('=') {
             Some(i) => (&pair[..i], &pair[i + 1..]),
-            None    => continue,
+            None => continue,
         };
         match key {
             "secret" => {
                 let n = match decode_base32(val, &mut secret_buf) {
                     Some(n) => n,
-                    None    => return OtpCredential::invalid("invalid base32 secret", raw),
+                    None => return OtpCredential::invalid("invalid base32 secret", raw),
                 };
-                if n < 10 { return OtpCredential::invalid("secret too short (min 10 bytes)", raw); }
+                if n < 10 {
+                    return OtpCredential::invalid("secret too short (min 10 bytes)", raw);
+                }
                 secret_len = n;
                 has_secret = true;
             }
@@ -545,42 +645,36 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
                 param_issuer_len = n.min(255);
                 has_param_issuer = true;
             }
-            "period" => {
-                match parse_i64(val) {
-                    Some(v) => period = Some(v),
-                    None    => return OtpCredential::invalid("cannot parse period", raw),
-                }
-            }
-            "t0" => {
-                match parse_u64(val) {
-                    Some(v) => t0 = Some(v),
-                    None    => return OtpCredential::invalid("cannot parse t0", raw),
-                }
-            }
-            "counter" => {
-                match parse_i64(val) {
-                    Some(v) => counter = Some(v),
-                    None    => return OtpCredential::invalid("cannot parse counter", raw),
-                }
-            }
-            "digits" => {
-                match parse_u8(val) {
-                    Some(v) => digits = Some(v),
-                    None    => return OtpCredential::invalid("cannot parse digits", raw),
-                }
-            }
+            "period" => match parse_i64(val) {
+                Some(v) => period = Some(v),
+                None => return OtpCredential::invalid("cannot parse period", raw),
+            },
+            "t0" => match parse_u64(val) {
+                Some(v) => t0 = Some(v),
+                None => return OtpCredential::invalid("cannot parse t0", raw),
+            },
+            "counter" => match parse_i64(val) {
+                Some(v) => counter = Some(v),
+                None => return OtpCredential::invalid("cannot parse counter", raw),
+            },
+            "digits" => match parse_u8(val) {
+                Some(v) => digits = Some(v),
+                None => return OtpCredential::invalid("cannot parse digits", raw),
+            },
             "algorithm" => {
                 let mut tmp = [0u8; 10];
                 let vb = val.as_bytes();
                 let n = vb.len().min(10);
-                for i in 0..n { tmp[i] = vb[i].to_ascii_uppercase(); }
+                for i in 0..n {
+                    tmp[i] = vb[i].to_ascii_uppercase();
+                }
                 algorithm = match &tmp[..n] {
-                    b"SHA1"      => OtpAlgorithmEnum::SHA1,
-                    b"SHA256"    => OtpAlgorithmEnum::SHA256,
-                    b"SHA512"    => OtpAlgorithmEnum::SHA512,
-                    b"SHA3-256"  => OtpAlgorithmEnum::SHA3_256,
+                    b"SHA1" => OtpAlgorithmEnum::SHA1,
+                    b"SHA256" => OtpAlgorithmEnum::SHA256,
+                    b"SHA512" => OtpAlgorithmEnum::SHA512,
+                    b"SHA3-256" => OtpAlgorithmEnum::SHA3_256,
                     b"KECCAK256" => OtpAlgorithmEnum::KECCAK256,
-                    _            => return OtpCredential::invalid("unknown algorithm", raw),
+                    _ => return OtpCredential::invalid("unknown algorithm", raw),
                 };
             }
             _ => {}
@@ -614,7 +708,7 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     } else {
         label_issuer
     };
-    cred.issuer       = VarChar255::from_str(resolved_issuer);
+    cred.issuer = VarChar255::from_str(resolved_issuer);
     cred.account_name = VarChar255::from_str(account_name);
 
     if has_secret {
@@ -624,16 +718,16 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     match otp_type {
         OtpTypeEnum::TOTP => {
             cred.period = period.unwrap_or(30);
-            cred.t0     = t0.unwrap_or(0);
+            cred.t0 = t0.unwrap_or(0);
             cred.counter = -1;
         }
         OtpTypeEnum::HOTP => {
             cred.counter = counter.unwrap_or(0);
-            cred.period  = -1;
+            cred.period = -1;
         }
         _ => {}
     }
-    cred.digits    = digits.unwrap_or(6);
+    cred.digits = digits.unwrap_or(6);
     cred.algorithm = algorithm.into();
     cred
 }
@@ -645,36 +739,40 @@ fn percent_decode(src: &[u8], out: &mut [u8]) -> usize {
     let mut j = 0;
     while i < src.len() && j < out.len() {
         if src[i] == b'%' && i + 2 < src.len() {
-            if let (Some(h), Some(l)) = (hex_val(src[i+1]), hex_val(src[i+2])) {
+            if let (Some(h), Some(l)) = (hex_val(src[i + 1]), hex_val(src[i + 2])) {
                 out[j] = (h << 4) | l;
-                j += 1; i += 3;
+                j += 1;
+                i += 3;
                 continue;
             }
         }
         out[j] = if src[i] == b'+' { b' ' } else { src[i] };
-        j += 1; i += 1;
+        j += 1;
+        i += 1;
     }
     j
 }
 
 /// Split raw percent-encoded label on first unencoded ':', writing decoded
 /// issuer and account_name into the provided buffers.
-fn split_label(
-    raw: &[u8],
-    issuer_out: &mut [u8],
-    account_out: &mut [u8],
-) -> (usize, usize) {
+fn split_label(raw: &[u8], issuer_out: &mut [u8], account_out: &mut [u8]) -> (usize, usize) {
     // Find first unencoded ':'
     let mut i = 0;
     let mut colon = None;
     while i < raw.len() {
-        if raw[i] == b'%' && i + 2 < raw.len() { i += 3; continue; }
-        if raw[i] == b':' { colon = Some(i); break; }
+        if raw[i] == b'%' && i + 2 < raw.len() {
+            i += 3;
+            continue;
+        }
+        if raw[i] == b':' {
+            colon = Some(i);
+            break;
+        }
         i += 1;
     }
     match colon {
         Some(pos) => {
-            let issuer_len  = percent_decode(&raw[..pos], issuer_out);
+            let issuer_len = percent_decode(&raw[..pos], issuer_out);
             // strip leading space or %20 from account name
             let account_raw = &raw[pos + 1..];
             let account_raw = if account_raw.starts_with(b"%20") {
@@ -701,19 +799,24 @@ fn apply_query_params(
     raw: &str,
 ) -> Result<(), OtpCredential> {
     for pair in query.split('&') {
-        if pair.is_empty() { continue; }
+        if pair.is_empty() {
+            continue;
+        }
         let (key, val) = match pair.find('=') {
             Some(i) => (&pair[..i], &pair[i + 1..]),
-            None    => continue,
+            None => continue,
         };
         match key {
             "period" => {
                 if otp_type == OtpTypeEnum::HOTP {
-                    return Err(OtpCredential::invalid("period parameter invalid for hotp", raw));
+                    return Err(OtpCredential::invalid(
+                        "period parameter invalid for hotp",
+                        raw,
+                    ));
                 }
                 match parse_i64(val) {
                     Some(v) => cred.period = v,
-                    None    => return Err(OtpCredential::invalid("cannot parse period", raw)),
+                    None => return Err(OtpCredential::invalid("cannot parse period", raw)),
                 }
             }
             "t0" => {
@@ -722,34 +825,37 @@ fn apply_query_params(
                 }
                 match parse_u64(val) {
                     Some(v) => cred.t0 = v,
-                    None    => return Err(OtpCredential::invalid("cannot parse t0", raw)),
+                    None => return Err(OtpCredential::invalid("cannot parse t0", raw)),
                 }
             }
             "counter" => {
                 if otp_type == OtpTypeEnum::TOTP {
-                    return Err(OtpCredential::invalid("counter parameter invalid for totp", raw));
+                    return Err(OtpCredential::invalid(
+                        "counter parameter invalid for totp",
+                        raw,
+                    ));
                 }
                 match parse_i64(val) {
                     Some(v) => cred.counter = v,
-                    None    => return Err(OtpCredential::invalid("cannot parse counter", raw)),
+                    None => return Err(OtpCredential::invalid("cannot parse counter", raw)),
                 }
             }
-            "digits" => {
-                match parse_u8(val) {
-                    Some(v) => cred.digits = v,
-                    None    => return Err(OtpCredential::invalid("cannot parse digits", raw)),
-                }
-            }
+            "digits" => match parse_u8(val) {
+                Some(v) => cred.digits = v,
+                None => return Err(OtpCredential::invalid("cannot parse digits", raw)),
+            },
             "algorithm" => {
                 let mut tmp = [0u8; 10];
                 let vb = val.as_bytes();
                 let n = vb.len().min(10);
-                for i in 0..n { tmp[i] = vb[i].to_ascii_uppercase(); }
+                for i in 0..n {
+                    tmp[i] = vb[i].to_ascii_uppercase();
+                }
                 cred.algorithm = match &tmp[..n] {
-                    b"SHA1"      => OtpAlgorithmEnum::SHA1.into(),
-                    b"SHA256"    => OtpAlgorithmEnum::SHA256.into(),
-                    b"SHA512"    => OtpAlgorithmEnum::SHA512.into(),
-                    b"SHA3-256"  => OtpAlgorithmEnum::SHA3_256.into(),
+                    b"SHA1" => OtpAlgorithmEnum::SHA1.into(),
+                    b"SHA256" => OtpAlgorithmEnum::SHA256.into(),
+                    b"SHA512" => OtpAlgorithmEnum::SHA512.into(),
+                    b"SHA3-256" => OtpAlgorithmEnum::SHA3_256.into(),
                     b"KECCAK256" => OtpAlgorithmEnum::KECCAK256.into(),
                     _ => return Err(OtpCredential::invalid("unknown algorithm", raw)),
                 };
@@ -765,30 +871,44 @@ fn hex_val(b: u8) -> Option<u8> {
         b'0'..=b'9' => Some(b - b'0'),
         b'A'..=b'F' => Some(b - b'A' + 10),
         b'a'..=b'f' => Some(b - b'a' + 10),
-        _           => None,
+        _ => None,
     }
 }
 
 /// no_std integer parsers
 fn parse_u64(s: &str) -> Option<u64> {
-    if s.is_empty() { return None; }
+    if s.is_empty() {
+        return None;
+    }
     let mut v = 0u64;
     for b in s.bytes() {
-        if !b.is_ascii_digit() { return None; }
+        if !b.is_ascii_digit() {
+            return None;
+        }
         v = v.checked_mul(10)?.checked_add((b - b'0') as u64)?;
     }
     Some(v)
 }
 
 fn parse_i64(s: &str) -> Option<i64> {
-    if s.is_empty() { return None; }
-    let (neg, digits) = if s.as_bytes()[0] == b'-' { (true, &s[1..]) } else { (false, s) };
+    if s.is_empty() {
+        return None;
+    }
+    let (neg, digits) = if s.as_bytes()[0] == b'-' {
+        (true, &s[1..])
+    } else {
+        (false, s)
+    };
     let v = parse_u64(digits)?;
     if neg {
-        if v > i64::MAX as u64 + 1 { return None; }
+        if v > i64::MAX as u64 + 1 {
+            return None;
+        }
         Some(-(v as i64))
     } else {
-        if v > i64::MAX as u64 { return None; }
+        if v > i64::MAX as u64 {
+            return None;
+        }
         Some(v as i64)
     }
 }
@@ -800,10 +920,19 @@ fn parse_u8(s: &str) -> Option<u8> {
 
 /// Format a u64 into a stack buffer, returns number of bytes written.
 fn fmt_u64(mut v: u64, buf: &mut [u8; 20]) -> usize {
-    if v == 0 { buf[0] = b'0'; return 1; }
+    if v == 0 {
+        buf[0] = b'0';
+        return 1;
+    }
     let mut tmp = [0u8; 20];
     let mut n = 0;
-    while v > 0 { tmp[n] = b'0' + (v % 10) as u8; v /= 10; n += 1; }
-    for i in 0..n { buf[i] = tmp[n - 1 - i]; }
+    while v > 0 {
+        tmp[n] = b'0' + (v % 10) as u8;
+        v /= 10;
+        n += 1;
+    }
+    for i in 0..n {
+        buf[i] = tmp[n - 1 - i];
+    }
     n
 }

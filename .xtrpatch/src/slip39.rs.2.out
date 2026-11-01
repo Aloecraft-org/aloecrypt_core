@@ -1,8 +1,0 @@
-📄 src/slip39.rs                            ✅ SUCCESS (Δ-12 lines)
-   1. ✅ @ Remove SLIP39Secret struct     [Rep: 6, New: 0, Δ-6]
-   2. ✅ @ Remove SLIP39Secret empty...   [Rep: 9, New: 0, Δ-9]
-   3. ✅ @ Update share creation mac...   [Rep: 4, New: 4, Δ+0]
-   4. ✅ @ Prepend location to the V...   [Rep: 7, New: 7, Δ+0]
-   5. ✅ @ Update _create_n_shares s...   [Rep: 7, New: 8, Δ+1]
-   6. ✅ @ Shift payload generation ...   [Rep: 13, New: 13, Δ+0]
-   7. ✅ @ Refactor combination logi...   [Rep: 31, New: 33, Δ+2]

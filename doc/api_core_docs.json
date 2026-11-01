@@ -1,5 +1,33 @@
 {
     "aloecrypt_api": {
+        "enums": [
+            {
+                "name": "StatusCode",
+                "description": "Status codes for the wire error channel. Every plugin export returns a 2-byte little-endian StatusCode ahead of its payload; the payload is present only when the status is Ok. Codes are coarse on purpose: a finer taxonomy would leak information an attacker can use, so resist splitting these.",
+                "members": [
+                    {"name": "Ok",          "description": "The operation succeeded and the payload follows."},
+                    {"name": "AuthFailed",  "description": "Authentication failed: wrong key, wrong nonce, altered ciphertext, or a MAC that does not match. Deliberately a single code -- distinguishing these cases would hand an attacker an oracle, so they must stay indistinguishable."},
+                    {"name": "BadEncoding", "description": "The input bytes could not be decoded: wrong length, malformed framing, or invalid UTF-8."},
+                    {"name": "BadArgument", "description": "An argument is outside the function's domain, such as a threshold larger than the share count."},
+                    {"name": "Unsupported", "description": "The requested algorithm or variant is not available in this build."},
+                    {"name": "Unspecified", "description": "An error with no more specific code. Also what an unrecognized status decodes to, so an unknown code can never read as success."}
+                ]
+            },
+            {
+                "name": "AloecryptAlgorithm",
+                "description": "Names an algorithm and parameter set wherever a document or wire structure must say which one it used -- a signature section, a KEM ciphertext, an address derivation. Values are wire-stable: never renumber.",
+                "members": [
+                    {"name": "NoValue",   "description": "Reserved default. Never valid on the wire; decoding an unknown value yields this."},
+                    {"name": "MlDsa44",   "description": "ML-DSA-44 (FIPS 204), NIST security category 2."},
+                    {"name": "MlDsa65",   "description": "ML-DSA-65 (FIPS 204), NIST security category 3."},
+                    {"name": "MlDsa87",   "description": "ML-DSA-87 (FIPS 204), NIST security category 5."},
+                    {"name": "MlKem512",  "description": "ML-KEM-512 (FIPS 203), NIST security category 1."},
+                    {"name": "MlKem768",  "description": "ML-KEM-768 (FIPS 203), NIST security category 3."},
+                    {"name": "MlKem1024", "description": "ML-KEM-1024 (FIPS 203), NIST security category 5."},
+                    {"name": "Invalid",   "description": "Reserved sentinel at the top of the space. Never written."}
+                ]
+            }
+        ],
         "sz_consts": [
             {"name" : "ENCRYPTED_TAG_SZ",     "description": "Size in bytes of the authentication tag appended to each encrypted chunk by the AEAD cipher (GCM/Poly1305). This overhead must be accounted for when sizing encrypted output buffers."},
             {"name" : "TIMESTAMP_SZ",         "description" : ""},
@@ -212,6 +240,32 @@
             }
         ]
     },
+    "document_api": {
+        "sz_consts": [
+            {"name": "DOC_MAGIC_SZ",          "description": "Size in bytes of the envelope magic that opens every binary aloecrypt document."},
+            {"name": "DOC_HEADER_SZ",         "description": "Size in bytes of the fixed envelope header: the 4-byte magic followed by a little-endian u16 format version."},
+            {"name": "DOC_SECTION_HEADER_SZ", "description": "Size in bytes of a section header: a little-endian u16 tag followed by a little-endian u32 payload length."},
+            {"name": "DOC_LABEL_MAX_SZ",      "description": "Maximum length in bytes of the document-type label that follows ALOECRYPT in an armor delimiter line."}
+        ],
+        "enums": [
+            {
+                "name": "SectionTag",
+                "description": "Identifies what a section of a document envelope carries. Readers skip sections whose tag they do not recognize, which is what keeps the envelope extensible; tags with the top bit set (0x8000 and above) are must-understand, and a reader that meets an unrecognized one refuses the document instead.",
+                "members": [
+                    {"name" : "NoValue",       "description": "Reserved. Never written to a document; decoding an unknown tag value yields this default."},
+                    {"name" : "Payload",       "description": "The document body: the canonical bytes the enclosing document signs, seals, or transports."},
+                    {"name" : "Signature",     "description": "An ML-DSA signature over the canonical signing bytes of the document."},
+                    {"name" : "SignerAddress", "description": "The 32-byte aloecrypt address of the key that produced the Signature section."},
+                    {"name" : "KemCipher",     "description": "An ML-KEM ciphertext that encapsulates the content-encryption key for one recipient."},
+                    {"name" : "AeadNonce",     "description": "The nonce for the AEAD that sealed the AeadCipher section. Unique per key; never reused."},
+                    {"name" : "AeadCipher",    "description": "AEAD-sealed bytes, including the authentication tag. Confidential payloads travel here instead of Payload."},
+                    {"name" : "KdfSalt",       "description": "The salt a password-based derivation used. Stored so the key can be re-derived to open the document."},
+                    {"name" : "KdfParams",     "description": "The password-derivation parameters (profile memory cost and pass count) the KdfSalt was used with, so a document is openable even when the deriving profile differs from the reading one."},
+                    {"name" : "Invalid",       "description": "Reserved sentinel at the top of the tag space. Never written; sits in the must-understand range by construction."}
+                ]
+            }
+        ]
+    },
     "dsa_api": {
         "sz_consts": [
             {"name": "MLDSA_SEED_SZ",          "description": "Size in bytes of the private seed used to deterministically derive an ML-DSA keypair."},
@@ -376,7 +430,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-44 signature is valid for the given message under this public key. Returns true if the signature is authentic and unmodified, false otherwise. Does not throw or panic on invalid signatures.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_44_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-44-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {
@@ -386,7 +441,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-65 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_65_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-65-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {
@@ -396,7 +452,8 @@
                     {"name": "verify", "description": "Verifies that a detached ML-DSA-87 signature is valid for the given message under this public key. Returns true if authentic, false otherwise.", "params": [
                         {"name": "msg",       "description": "The original message bytes that were signed."},
                         {"name": "signature", "description": "The detached signature bytes to verify, of exactly MLDSA_87_SIGNATURE_SZ length."}
-                    ]}
+                    ]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-DSA-87-specific domain string. Stable for the key's lifetime, safe to publish, and what documents carry in place of the full key."}
                 ]
             },
             {
@@ -630,21 +687,24 @@
                 "name": "IMlKem512Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-512. Used by the initiating party to establish a shared secret with the holder of an ML-KEM-512 keypair.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-512-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {
                 "name": "IMlKem768Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-768.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-768-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {
                 "name": "IMlKem1024Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-1024.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]}
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-1024-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
             {
@@ -671,6 +731,24 @@
             {"name": "PasswordEncryptedChunk",   "description": "A fixed-size buffer holding one encrypted chunk plus its authentication tag (PASSWORD_CIPHER_CHUNK_SZ + ENCRYPTED_TAG_SZ bytes total)."},
             {"name": "PasswordUnencryptedChunk", "description": "A fixed-size buffer holding one plaintext chunk of PASSWORD_CIPHER_CHUNK_SZ bytes."},
             {"name": "PasswordNonce",            "description": "Nonce used to initialize the password cipher. Must be unique for each encryption operation performed under the same key. Typically generated from a CSPRNG and stored alongside the ciphertext."}
+        ],
+        "functions": [
+            {
+                "name": "password_encrypt_next_chunk",
+                "description": "Encrypt one fixed-size chunk under ChaCha20-Poly1305, deriving the chunk nonce from the cipher's base nonce and counter. Returns the advanced cipher state, the encrypted chunk with its tag, and whether this was the final chunk.",
+                "params": [
+                    {"name": "chunk",  "description": "The plaintext chunk to encrypt. Always PASSWORD_CIPHER_CHUNK_SZ bytes; the caller zero-pads a short final chunk."},
+                    {"name": "cipher", "description": "The cipher state; its counter selects which chunk this is."}
+                ]
+            },
+            {
+                "name": "password_decrypt_next_chunk",
+                "description": "Decrypt and authenticate one chunk. Fails with AuthFailed on a wrong key, wrong nonce, or altered ciphertext -- which of these happened is deliberately not distinguishable. Returns the advanced cipher state, the plaintext, and how many of its bytes are payload.",
+                "params": [
+                    {"name": "chunk",  "description": "The encrypted chunk and its authentication tag."},
+                    {"name": "cipher", "description": "The cipher state; its counter selects which chunk this is."}
+                ]
+            }
         ],
         "structs": [
             {
@@ -735,68 +813,32 @@
         "functions": [
             {
                 "name": "pbkdf",
-                "description": "Derives a 32-byte symmetric key from a password and salt using a password-based key derivation function with an explicit iteration count. Higher iteration counts increase resistance to brute-force attacks at the cost of derivation time.",
+                "description": "Derives a 32-byte symmetric key from a password and salt with Argon2id. iters is the Argon2 pass count (t_cost); the memory cost is fixed by the build profile (19 MiB hosted, 64 KiB embedded), so the same inputs derive different keys on different profiles -- by design, since memory cost is a security parameter. The salt is normalized through a domain-separated hash, so any length including zero is accepted.",
                 "params": [
-                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
-                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
-                    {"name": "domain_info", "description": "Domain separation string identifying the password context"},
-                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
+                    {"name": "password", "description": "The user-supplied password bytes to derive from."},
+                    {"name": "salt",     "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials. Any length is accepted; it is normalized to 32 bytes internally."},
+                    {"name": "iters",    "description": "Argon2 pass count (t_cost). Values below 1 are clamped to 1. Higher values increase resistance to offline attacks linearly in derivation time; the profile default is the recommended starting point."}
                 ]
             },
             {
-                "name": "pbkdf_with_salted_and_domain",
-                "description": "Derives a 32-byte symmetric key from a password",
-                "params": [
-                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
-                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
-                    {"name": "domain_info", "description": "Domain separation string identifying the password context"}
-                ]
-            },
-            {
-                "name": "pbkdf_with_salt_and_iters",
-                "description": "Derives a 32-byte symmetric key from a password",
-                "params": [
-                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
-                    {"name": "salt",        "description": "A per-credential random salt, typically 16+ bytes, stored alongside the derived key material. Prevents precomputation attacks across credentials."},
-                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
-                ]
-            },
-            {
-                "name": "pbkdf_with_domain_and_iters",
-                "description": "Derives a 32-byte symmetric key from a password",
-                "params": [
-                    {"name": "password",    "description": "The user-supplied password bytes to derive from."},
-                    {"name": "domain_info", "description": "Domain separation string identifying the password context"},
-                    {"name": "iters",       "description": "Number of PBKDF iterations. Higher values increase security against offline attacks; choose based on acceptable latency for the deployment context."}
-                ]
-            },
-            {
-                "name": "pbkdf_with_salt",
-                "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
+                "name": "salted_pbkdf",
+                "description": "Derives a 32-byte key from a password and salt using the build profile's default Argon2id pass count. Use when you do not need to control the pass count explicitly.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."},
                     {"name": "salt",     "description": "A per-credential random salt."}
                 ]
             },
             {
-                "name": "pbkdf_with_domain",
-                "description": "Derives a 32-byte key from a password and salt using a library-defined default iteration count. Use when you do not need to control iteration count explicitly.",
-                "params": [
-                    {"name": "password", "description": "The user-supplied password bytes."},
-                    {"name": "domain_info", "description": "Domain separation string identifying the password context"}
-                ]
-            },
-            {
                 "name": "pbkdf_with_iters",
-                "description": "Derives a 32-byte key from a password using an explicit iteration count but no external salt. Suitable for contexts where a salt is embedded in or derived from the password itself.",
+                "description": "Derives a 32-byte key from a password with an explicit Argon2id pass count but no external salt. Suitable for contexts where a salt is embedded in or derived from the password itself.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."},
-                    {"name": "iters",    "description": "Number of PBKDF iterations."}
+                    {"name": "iters",    "description": "Argon2 pass count (t_cost); values below 1 are clamped to 1."}
                 ]
             },
             {
-                "name": "pbkdf_simple",
-                "description": "Derives a 32-byte key from a password using library defaults for both salt and iteration count. Provided for convenience in low-security or testing contexts; prefer salted_pbkdf or pbkdf in production.",
+                "name": "simple_pbkdf",
+                "description": "Derives a 32-byte key from a password using profile defaults for both salt and pass count. Without a salt, equal passwords derive equal keys; prefer salted_pbkdf or pbkdf wherever a salt can be stored.",
                 "params": [
                     {"name": "password", "description": "The user-supplied password bytes."}
                 ]
@@ -930,7 +972,7 @@
         "functions": [
             {
                 "name": "authorize_recovery",
-                "description": "",
+                "description": "Reconstruct the HMAC from the presented ikm and domain info, and decapsulate the recovery ciphertext only if it matches. Fails with AuthFailed on a mismatch; the comparison is constant-time.",
                 "params": [
                     {"name": "authorizer",  "description": "Authorizer KEM decapsulator"},
                     {"name": "cipher",      "description": "KEM ciphertext presented to authorizer for decapsulation"},
@@ -1009,7 +1051,7 @@
                     ] },
                     {"name" : "to_uri", "description" : "", "params" : [ ] },
                     {"name" : "generate",    "description" : "", "params" : [ 
-                        {"name": "current", "description" : "totp time or hotp counter (DOES NOT INCREMENR HOTP COUNTER!)"}
+                        {"name": "current", "description" : "totp time or hotp counter (does not increment the HOTP counter)"}
                     ]},
                     { "name": "with_counter",      "description": "", "params": [ {"name":"counter",      "description": ""} ]},
                     { "name": "with_period",       "description": "", "params": [ {"name":"period",       "description": ""} ]},

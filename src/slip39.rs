@@ -1,8 +1,6 @@
 use super::aloecrypt_api::*;
-use super::fixed_byte::*;
 use super::galois::*;
 use super::reedsolomon::*;
-use super::rng::*;
 use crate::rng_api::*;
 
 const MAX_VARIANTS: usize = 33;
@@ -13,10 +11,10 @@ pub fn to_slip39_secret(data: &[u8]) -> VarU16_255 {
         data.len() % 2 == 0,
         "to_slip39 must be an even number of bytes"
     );
-    let mut buf = [0u16; 255];
-
     let mut data_words = _bytes_to_u16_10bit(data);
-    let checksum = create_slip39_rs1024_checksum(&data_words.to_u16_arr());
+    let mut words = [0u16; 255];
+    let n_words = data_words.read_u16_arr(&mut words);
+    let checksum = create_slip39_rs1024_checksum(&words[..n_words]);
     let data_len = data_words.value[0];
 
     data_words.value[(data_len * 2 + 2) as usize..(data_len * 2 + 4) as usize]
@@ -57,27 +55,29 @@ pub fn from_slip39_secret(data: &[u16]) -> VarByte255 {
     VarByte255 { value }
 }
 
-pub fn to_slip39_mnemonic(indices: &[u16]) -> VarString511 {
-    let mut out = VarString511 { value: EMPTY_B512 };
+#[cfg(feature = "slip39_words")]
+pub fn to_slip39_mnemonic(indices: &[u16]) -> VarString510 {
+    let mut out = VarString510 { value: EMPTY_B512 };
 
     let mut out_len = 0;
     for (i, &idx) in indices.iter().enumerate() {
         if i > 0 {
-            out.value[out_len + 1] = b' ';
+            out.value[out_len + 2] = b' ';
             out_len += 1;
         }
         let word = SLIP39_WORDLIST[idx as usize].as_bytes();
         let w_len = word.len();
 
         // Copy the word into the buffer
-        out.value[out_len + 1..out_len + 1 + w_len].copy_from_slice(word);
+        out.value[out_len + 2..out_len + 2 + w_len].copy_from_slice(word);
         out_len += w_len;
     }
-    out.value[0] = out_len as u8;
+    out.value[0..2].copy_from_slice(&(out_len as u16).to_le_bytes());
     out
 }
 
-pub fn from_slip39_mnemonic(mnemonic: &VarString511) -> VarU16_255 {
+#[cfg(feature = "slip39_words")]
+pub fn from_slip39_mnemonic(mnemonic: &VarString510) -> VarU16_255 {
     let mut arr = [0u16; 255];
     let mut len = 0;
     for word in mnemonic.to_str().split(' ') {
@@ -132,12 +132,12 @@ macro_rules! impl_create_slip39_shares {
                     for val in coef_buf[idx].iter_mut() { *val &= 0x3FF; }
                 }
 
-                let secret_len = secret.to_u16_arr().len() as u8;
+                let secret_len = secret.len() as u8;
                 for i in 0..$n {
                     secret_buf[i].value[0] = secret_len + 1;
                     secret_buf[i].value[2..4].copy_from_slice(&location_buf[i].to_le_bytes());
                 }
-                _create_n_shares(secret, threshold, rng, coef_buf, &mut secret_buf, &location_buf);
+                _create_n_shares(secret, threshold, &coef_buf, &mut secret_buf, &location_buf);
                 secret_buf
             }
         )*
@@ -161,15 +161,19 @@ impl_create_slip39_shares! {
     create_16_slip39_shares, 16
 }
 
+// coef_buf is read-only here and is 8,160 bytes; taking it by reference avoids
+// copying it onto the stack. The rng parameter was unused -- coefficients are
+// drawn by the caller.
 fn _create_n_shares(
     secret: VarU16_255,
     threshold: u8,
-    mut rng: AloeRng,
-    mut coef_buf: [[u16; MAX_VARIANTS]; MAX_SECRET_LEN],
+    coef_buf: &[[u16; MAX_VARIANTS]; MAX_SECRET_LEN],
     secret_buf: &mut [VarU16_255],
     location_buf: &[u16],
 ) {
-    let secret_parts = secret.to_u16_arr();
+    let mut parts = [0u16; 255];
+    let n_parts = secret.read_u16_arr(&mut parts);
+    let secret_parts = &parts[..n_parts];
     let n_shares = secret_buf.len();
     for part_idx in 0..secret_parts.len() {
         for secret_idx in 0..n_shares {

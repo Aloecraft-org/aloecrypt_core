@@ -1,25 +1,31 @@
-// src/dsa.rs
+// src/mldsa.rs
 // License: Apache-2.0 (disclaimer at bottom of file)
 use super::dsa_api::*;
 
+use crate::aloecrypt_api::{AloecryptAddress, AloecryptAddressable};
+use crate::hash::domain_hash;
+
 use ml_dsa::{
-    EncodedSignature, ExpandedSigningKey, KeyGen, MlDsa44 as MlDsa44Params,
-    MlDsa65 as MlDsa65Params, MlDsa87 as MlDsa87Params, Signature, VerifyingKey,
+    EncodedSignature, ExpandedSigningKey, MlDsa44 as MlDsa44Params, MlDsa65 as MlDsa65Params,
+    MlDsa87 as MlDsa87Params, Signature, SigningKey, VerifyingKey,
     signature::{Keypair, Signer, Verifier},
 };
 
 impl MlDsa44Keypair {
     #[inline(never)]
-    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa44Params as KeyGen>::KeyPair {
-        MlDsa44Params::from_seed(seed.into())
+    fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa44Params> {
+        SigningKey::<MlDsa44Params>::from_seed(seed.into())
     }
     #[inline(never)]
     fn _signing_key(&self) -> ExpandedSigningKey<MlDsa44Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    fn _encode_pubkey(kp: &<MlDsa44Params as KeyGen>::KeyPair) -> [u8; MLDSA_44_PUBKEY_SZ] {
+    fn _encode_pubkey(kp: &SigningKey<MlDsa44Params>) -> [u8; MLDSA_44_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -39,16 +45,19 @@ impl MlDsa44Keypair {
 
 impl MlDsa65Keypair {
     #[inline(never)]
-    pub fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa65Params as KeyGen>::KeyPair {
-        MlDsa65Params::from_seed(seed.into())
+    pub fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa65Params> {
+        SigningKey::<MlDsa65Params>::from_seed(seed.into())
     }
     #[inline(never)]
     pub fn _signing_key(&self) -> ExpandedSigningKey<MlDsa65Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    pub fn _encode_pubkey(kp: &<MlDsa65Params as KeyGen>::KeyPair) -> [u8; MLDSA_65_PUBKEY_SZ] {
+    pub fn _encode_pubkey(kp: &SigningKey<MlDsa65Params>) -> [u8; MLDSA_65_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -67,16 +76,19 @@ impl MlDsa65Keypair {
 
 impl MlDsa87Keypair {
     #[inline(never)]
-    fn _kp(seed: &MlDsaPrivateSeed) -> <MlDsa87Params as KeyGen>::KeyPair {
-        MlDsa87Params::from_seed(seed.into())
+    fn _kp(seed: &MlDsaPrivateSeed) -> SigningKey<MlDsa87Params> {
+        SigningKey::<MlDsa87Params>::from_seed(seed.into())
     }
     #[inline(never)]
     fn _signing_key(&self) -> ExpandedSigningKey<MlDsa87Params> {
+        // Measurably cheaper on stack than
+        // ExpandedSigningKey::from_seed, which does the same work
+        // internally but is #[inline] and extends the live range.
         let kp = Self::_kp(&self.private_seed);
-        kp.signing_key().clone()
+        kp.expanded_key().clone()
     }
     #[inline(never)]
-    fn _encode_pubkey(kp: &<MlDsa87Params as KeyGen>::KeyPair) -> [u8; MLDSA_87_PUBKEY_SZ] {
+    fn _encode_pubkey(kp: &SigningKey<MlDsa87Params>) -> [u8; MLDSA_87_PUBKEY_SZ] {
         kp.verifying_key().encode().into()
     }
     #[inline(never)]
@@ -100,8 +112,10 @@ impl MlDsa44Verifier {
         VerifyingKey::<MlDsa44Params>::decode((&self.public_key).into())
     }
 
-    pub fn from_public_key(public_key : &MlDsa44Pubkey) -> Self {
-        MlDsa44Verifier { public_key: public_key.clone() }
+    pub fn from_public_key(public_key: &MlDsa44Pubkey) -> Self {
+        MlDsa44Verifier {
+            public_key: public_key.clone(),
+        }
     }
 }
 
@@ -111,8 +125,10 @@ impl MlDsa65Verifier {
         VerifyingKey::<MlDsa65Params>::decode((&self.public_key).into())
     }
 
-    pub fn from_public_key(public_key : &MlDsa65Pubkey) -> Self {
-        MlDsa65Verifier { public_key: public_key.clone() }
+    pub fn from_public_key(public_key: &MlDsa65Pubkey) -> Self {
+        MlDsa65Verifier {
+            public_key: public_key.clone(),
+        }
     }
 }
 
@@ -122,8 +138,10 @@ impl MlDsa87Verifier {
         VerifyingKey::<MlDsa87Params>::decode((&self.public_key).into())
     }
 
-    pub fn from_public_key(public_key : &MlDsa87Pubkey) -> Self {
-        MlDsa87Verifier { public_key: public_key.clone() }
+    pub fn from_public_key(public_key: &MlDsa87Pubkey) -> Self {
+        MlDsa87Verifier {
+            public_key: public_key.clone(),
+        }
     }
 }
 
@@ -217,10 +235,38 @@ impl IMlDsa87Keypair for MlDsa87Keypair {
     #[inline(never)]
     fn get_verifier(&self) -> MlDsa87Verifier {
         let public_key = {
-            let signing_key = MlDsa87Params::from_seed(&(self.private_seed).into());
+            let signing_key = Self::_kp(&(self.private_seed).into());
             Self::_encode_pubkey(&signing_key)
         };
         MlDsa87Verifier { public_key }
+    }
+}
+
+// An address is the domain-separated hash of a key's addressing material,
+// under a domain string that names the algorithm -- so keys of different
+// algorithms can never share an address, and the derivation carries a
+// version to bump if it ever has to change. The material hook is the
+// schema's AloecryptAddressable; documents carry the 32-byte result in
+// place of a full public key.
+const MLDSA_44_ADDRESS_DOMAIN: &str = "aloecrypt.address.mldsa44.v1";
+const MLDSA_65_ADDRESS_DOMAIN: &str = "aloecrypt.address.mldsa65.v1";
+const MLDSA_87_ADDRESS_DOMAIN: &str = "aloecrypt.address.mldsa87.v1";
+
+impl AloecryptAddressable for MlDsa44Verifier {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
+    }
+}
+
+impl AloecryptAddressable for MlDsa65Verifier {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
+    }
+}
+
+impl AloecryptAddressable for MlDsa87Verifier {
+    fn addressing_material(&self) -> &[u8] {
+        &self.public_key
     }
 }
 
@@ -236,9 +282,17 @@ impl IMlDsa44Pubkey for MlDsa44Verifier {
 }
 
 impl IMlDsa44Verifier for MlDsa44Verifier {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLDSA_44_ADDRESS_DOMAIN)
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa44Signature) -> bool {
-        let sig = Signature::<MlDsa44Params>::decode(signature.into()).unwrap();
+        // Not every byte pattern is a signature: decode fails on out-of-range
+        // encodings, and attacker-supplied bytes reach here. A malformed
+        // signature is a verification failure, not a panic.
+        let Some(sig) = Signature::<MlDsa44Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {
@@ -249,9 +303,17 @@ impl IMlDsa44Verifier for MlDsa44Verifier {
 }
 
 impl IMlDsa44Verifier for MlDsa44Keypair {
+    fn address(&self) -> AloecryptAddress {
+        self.get_verifier().address()
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa44Signature) -> bool {
-        let sig = Signature::<MlDsa44Params>::decode(signature.into()).unwrap();
+        // Not every byte pattern is a signature: decode fails on out-of-range
+        // encodings, and attacker-supplied bytes reach here. A malformed
+        // signature is a verification failure, not a panic.
+        let Some(sig) = Signature::<MlDsa44Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {
@@ -272,9 +334,14 @@ impl IMlDsa65Pubkey for MlDsa65Verifier {
     }
 }
 impl IMlDsa65Verifier for MlDsa65Verifier {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLDSA_65_ADDRESS_DOMAIN)
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa65Signature) -> bool {
-        let sig = Signature::<MlDsa65Params>::decode(signature.into()).unwrap();
+        let Some(sig) = Signature::<MlDsa65Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {
@@ -285,9 +352,14 @@ impl IMlDsa65Verifier for MlDsa65Verifier {
 }
 
 impl IMlDsa65Verifier for MlDsa65Keypair {
+    fn address(&self) -> AloecryptAddress {
+        self.get_verifier().address()
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa65Signature) -> bool {
-        let sig = Signature::<MlDsa65Params>::decode(signature.into()).unwrap();
+        let Some(sig) = Signature::<MlDsa65Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {
@@ -308,9 +380,14 @@ impl IMlDsa87Pubkey for MlDsa87Verifier {
     }
 }
 impl IMlDsa87Verifier for MlDsa87Verifier {
+    fn address(&self) -> AloecryptAddress {
+        domain_hash(self.addressing_material(), MLDSA_87_ADDRESS_DOMAIN)
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa87Signature) -> bool {
-        let sig = Signature::<MlDsa87Params>::decode(signature.into()).unwrap();
+        let Some(sig) = Signature::<MlDsa87Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {
@@ -321,9 +398,14 @@ impl IMlDsa87Verifier for MlDsa87Verifier {
 }
 
 impl IMlDsa87Verifier for MlDsa87Keypair {
+    fn address(&self) -> AloecryptAddress {
+        self.get_verifier().address()
+    }
     #[inline(never)]
     fn verify(&self, msg: &[u8], signature: &MlDsa87Signature) -> bool {
-        let sig = Signature::<MlDsa87Params>::decode(signature.into()).unwrap();
+        let Some(sig) = Signature::<MlDsa87Params>::decode(signature.into()) else {
+            return false;
+        };
         match self._verifier().verify(msg, &sig) {
             Ok(()) => return true,
             _ => {

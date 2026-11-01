@@ -1,22 +1,24 @@
-use aloecrypt_core::dsa_api::IMlDsa65Keypair;
-use aloecrypt_core::dsa_api::IMlDsa65Verifier;
-use aloecrypt_core::dsa_api::MlDsa65Keypair;
-use aloecrypt_core::dsa_api::MlDsaKeypair;
-use aloecrypt_core::dsa_api::MlDsa65Verifier;
-use aloecrypt_core::rng_api::AloeRng;
-use aloecrypt_core::rng_api::IAloeRng;
+// src/bin/mldsa.rs
+// License: Apache-2.0
+//
+// Smoke test: ML-DSA-65 sign, verify, and verify again from the bare public key.
+//
+//   cargo run --bin mldsa
+
+use aloecrypt_core::dsa_api::*;
 use aloecrypt_core::rng::CryptoRngCore;
-use rand_core::{Rng, RngCore};
+use aloecrypt_core::rng_api::*;
+use rand_core::Rng;
 
 fn _make_rng() -> impl CryptoRngCore {
     let mut seed = [0u8; 32];
-    getrandom::getrandom(&mut seed);
+    getrandom::getrandom(&mut seed).expect("host RNG unavailable");
     AloeRng::new(seed)
 }
 
 fn main() {
     let mut rng = _make_rng();
-    let mut seed = [0u8;32];
+    let mut seed = [0u8; 32];
     rng.fill_bytes(&mut seed);
 
     let sign_key = MlDsa65Keypair::from_seed(&seed);

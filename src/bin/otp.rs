@@ -1,96 +1,56 @@
-// use aloecrypt_core::aloecrypt_api::*;
-// use aloecrypt_core::otp::*;
-// use aloecrypt_core::otp_api::*;
+// src/bin/otp.rs
+// License: Apache-2.0
+//
+// Smoke test for OTP parsing and code generation, TOTP and HOTP.
+//
+//   cargo run --bin otp
 
-fn main() { }
-//     use core::time::Duration;
-//     use std::time::{SystemTime, UNIX_EPOCH};
+use aloecrypt_core::aloecrypt_api::*;
+use aloecrypt_core::otp_api::*;
 
-//     // 1. Example URI (Standard SHA1, 6 digits, 30s period)
-//     // Secret "JBSWY3DPEHPK3PXP" decodes to "Hello!" in Base32
-//     let uri =
-//         "otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example&digits=6";
-//     let cred = OtpCredential::from_uri(uri);
+fn print_code(name: &str, cred: &OtpCredential, current: u64) {
+    let result = cred.generate(current);
+    let code: String = result
+        .iter()
+        .take_while(|d| **d >= 0)
+        .map(|d| char::from(b'0' + *d as u8))
+        .collect();
+    println!("{name:<10} {code}");
+}
 
-//     // 2. Check for errors stored in the 'account_name' field
-//     let status = cred.account_name.to_str();
-//     if status.starts_with("Invalid") || status.contains("Missing") {
-//         println!("Error parsing URI: {}", status);
-//         return;
-//     }
+fn main() {
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-//     // 3. Generate a code for the current time
-//     let now = SystemTime::now()
-//         .duration_since(UNIX_EPOCH)
-//         .unwrap_or(Duration::ZERO)
-//         .as_secs();
+    // Secret "JBSWY3DPEHPK3PXP" decodes to "Hello!" in Base32.
+    let cred = OtpCredential::from_string(
+        "otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example&digits=6",
+    );
+    let otp_type: OtpTypeEnum = cred.otp_type.into();
+    if otp_type == OtpTypeEnum::UNKNOWN {
+        // A failed parse carries its reason in `label`.
+        println!("Error parsing URI: {}", cred.label.to_str());
+        return;
+    }
 
-//     // Pass by reference is fine here as long as 'generate' handles the packed fields internally
-//     let result = cred.generate(now);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    println!("TOTP for {} at {now}:", cred.account_name.to_str());
+    print_code("now", &cred, now);
+    println!("round-trip URI: {}\n", cred.to_uri().to_str());
 
-//     // 4. Format and print the output
-//     print!("TOTP Code for {}: ", cred.account_name.to_str());
-//     for i in 0..cred.digits as usize {
-//         if result[i] != -1 {
-//             print!("{}", result[i]);
-//         }
-//     }
-//     let step = cred.step;
-//     println!(
-//         "\n(Algorithm: {:?}, Step: {}s)",
-//         Into::<OtpAlgorithmEnum>::into(cred.algorithm),
-//         step
-//     );
+    // Fixed timestamp for reproducible output, one line per algorithm.
+    let test_time = 1713636000;
+    for algorithm in ["SHA1", "SHA256", "SHA512", "SHA3-256", "KECCAK256"] {
+        let uri = format!(
+            "otpauth://totp/Test:{algorithm}?secret=JBSWY3DPEHPK3PXP&algorithm={algorithm}"
+        );
+        print_code(algorithm, &OtpCredential::from_string(&uri), test_time);
+    }
 
-//     let algorithms = [
-//         (
-//             "SHA1",
-//             "otpauth://totp/Test:SHA1?secret=JBSWY3DPEHPK3PXP&algorithm=SHA1",
-//         ),
-//         (
-//             "SHA256",
-//             "otpauth://totp/Test:SHA256?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256",
-//         ),
-//         (
-//             "SHA512",
-//             "otpauth://totp/Test:SHA512?secret=JBSWY3DPEHPK3PXP&algorithm=SHA512",
-//         ),
-//         (
-//             "SHA3-256",
-//             "otpauth://totp/Test:SHA3?secret=JBSWY3DPEHPK3PXP&algorithm=SHA3-256",
-//         ),
-//         (
-//             "KECCAK256",
-//             "otpauth://totp/Test:Keccak?secret=JBSWY3DPEHPK3PXP&algorithm=KECCAK256",
-//         ),
-//         (
-//             "SHA256",
-//             "otpauth://hotp/Test:SHA256?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256",
-//         ),
-//         (
-//             "SHA256",
-//             "otpauth://hotp/Test:SHA256?secret=JBSWY3DPEHPK3PXP&algorithm=SHA256&counter=11",
-//         ),
-//     ];
-
-//     let test_time = 1713636000;
-
-//     for (name, uri) in algorithms {
-//         let cred = OtpCredential::from_uri(uri);
-//         let result = if cred.otp_type.0 == OtpType::HOTP
-//         {
-//             cred.generate(cred.step as u64)
-//         }
-//         else {
-//             cred.generate(test_time)
-//         };
-
-//         print!("{:<10} Code: ", name);
-//         for i in 0..cred.digits as usize {
-//             if result[i] != -1 {
-//                 print!("{}", result[i]);
-//             }
-//         }
-//         println!();
-//     }
-// }
+    // HOTP: the caller owns the counter; generate() does not advance it.
+    let hotp = OtpCredential::from_string("hotp/JBSWY3DPEHPK3PXP?counter=7");
+    let counter = hotp.counter as u64;
+    print_code("HOTP c=7", &hotp, counter);
+}

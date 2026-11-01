@@ -55,12 +55,16 @@ class LangGenerator(ABC):
         ...
 
     @abstractmethod
-    def emit_enums(self, enums: dict[str, MetaEnum]) -> list[str]:
-        """Emit enum definitions."""
+    def emit_enum(self, enum: MetaEnum) -> list[str]:
+        """Emit an enum as a flat value over its repr type.
+
+        The Rust side is a #[repr(transparent)] newtype so the value crosses the
+        FFI boundary unchanged; target languages mirror that rather than
+        introducing a richer type that would need converting at the boundary.
+        """
         ...
 
     # ── Structs / Models ──────────────────────────────────────────────────
-
 
     @abstractmethod
     def emit_struct(self, struct: MetaStruct) -> list[str]:
@@ -99,41 +103,42 @@ class LangGenerator(ABC):
         lines.append("")
 
         # Constants
-        # lines.append(self.section_comment("Constants"))
-        # lines += self.emit_constants(self.meta.meta_consts)
-        # lines.append("")
+        lines.append(self.section_comment("Constants"))
+        lines += self.emit_constants(self.meta.meta_consts)
+        lines.append("")
 
         # Byte aliases
-        # lines.append(self.section_comment("Byte Aliases"))
-        # lines += self.emit_byte_aliases(self.meta.meta_byte_aliases)
-        # lines.append("")
+        lines.append(self.section_comment("Byte Aliases"))
+        lines += self.emit_byte_aliases(self.meta.meta_byte_aliases)
+        lines.append("")
 
         # Enums
-        # lines.append(self.section_comment("Enums"))
-        # lines += self.emit_enums(self.meta.meta_enums)
-        # lines.append("")
+        lines.append(self.section_comment("Enums"))
+        for enum in self.meta.meta_enums.values():
+            lines += self.emit_enum(enum)
+            lines.append("")
 
         # Traits / Interfaces
-        # lines.append(self.section_comment("Traits"))
-        # for trait in self.meta.meta_traits.values():
-        #     lines += self.emit_trait(trait)
-        #     lines.append("")
+        lines.append(self.section_comment("Traits"))
+        for trait in self.meta.meta_traits.values():
+            lines += self.emit_trait(trait)
+            lines.append("")
 
         # Wire helpers (before namespaces so they're available)
-        # lines.append(self.section_comment("Wire Format Helpers"))
-        # lines += self.emit_pack_helpers()
-        # lines.append("")
+        lines.append(self.section_comment("Wire Format Helpers"))
+        lines += self.emit_pack_helpers()
+        lines.append("")
 
         # Call wrappers (before namespaces so struct methods can delegate)
-        # lines.append(self.section_comment("Plugin Call Wrappers"))
-        # for call in self.wire_calls:
-        #     lines += self.emit_call_wrapper(call)
-        #     lines.append("")
+        lines.append(self.section_comment("Plugin Call Wrappers"))
+        for call in self.wire_calls:
+            lines += self.emit_call_wrapper(call)
+            lines.append("")
 
         # Namespace classes with inner structs and standalone functions
-        # lines.append(self.section_comment("Namespaces"))
-        # lines += self.emit_namespace_wrappers()
-        # lines.append("")
+        lines.append(self.section_comment("Namespaces"))
+        lines += self.emit_namespace_wrappers()
+        lines.append("")
 
         lines += self.file_footer()
         return "\n".join(lines)

@@ -29,7 +29,7 @@ pub fn to_encrypted_byte_size(unencrypted_byte_size: u64) -> u64 {
     let chunk_sz = PASSWORD_CIPHER_CHUNK_SZ as u64;
     let tag_sz = ENCRYPTED_TAG_SZ as u64;
     let num_chunks = (unencrypted_byte_size + chunk_sz - 1) / chunk_sz;
-    num_chunks * (chunk_sz + tag_sz)
+    unencrypted_byte_size + (num_chunks * tag_sz)
 }
 
 pub fn to_unencrypted_byte_size(encrypted_byte_size: u64) -> u64 {
@@ -71,9 +71,13 @@ pub fn password_encrypt_next_chunk(
     let aead = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&cipher.key));
     let nonce = Nonce::from_slice(&current_nonce);
 
+    // Cannot fail: encrypt_in_place_detached only errors when the buffer
+    // exceeds the AEAD's maximum length, and the chunk is a fixed
+    // PASSWORD_CIPHER_CHUNK_SZ. Unlike decryption there is no
+    // attacker-controlled path to this.
     let tag = aead
         .encrypt_in_place_detached(nonce, b"", data_part)
-        .expect("Encryption failed");
+        .expect("chunk is a fixed size below the ChaCha20-Poly1305 limit");
     tag_part.copy_from_slice(&tag);
 
     cipher.counter = match is_done == 1 {
@@ -90,7 +94,7 @@ pub fn password_encrypt_next_chunk(
 pub fn password_decrypt_next_chunk(
     chunk: PasswordEncryptedChunk,
     mut cipher: PasswordCipher,
-) -> DecryptChunkResult {
+) -> Result<DecryptChunkResult, StatusCode> {
     let mut current_nonce = EMPTY_PASSWORD_NONCE;
     current_nonce[7..11].copy_from_slice(&cipher.counter.to_le_bytes());
     for (c, n) in current_nonce.iter_mut().zip(cipher.nonce.iter()) {
@@ -122,19 +126,22 @@ pub fn password_decrypt_next_chunk(
     let aead = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&cipher.key));
     let nonce = Nonce::from_slice(&current_nonce);
 
+    // Reachable with a wrong password or altered ciphertext. Returning an
+    // error rather than panicking matters especially under panic = "abort",
+    // where this would otherwise take the whole module down.
     aead.decrypt_in_place_detached(nonce, b"", &mut next_chunk, tag_part.into())
-        .expect("Decryption failed");
+        .map_err(|_| StatusCode(StatusCode::AuthFailed))?;
 
     cipher.counter = match is_done != 0 {
         true => 0,
         false => cipher.counter + 1,
     };
-    DecryptChunkResult {
+    Ok(DecryptChunkResult {
         cipher: cipher,
         next_chunk,
         n_bytes,
         is_done,
-    }
+    })
 }
 
 pub fn password_encrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> EncryptChunkResult {
@@ -162,7 +169,10 @@ pub fn password_encrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Encryp
     result
 }
 
-pub fn password_decrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> DecryptChunkResult {
+pub fn password_decrypt_next(
+    data: &[u8],
+    cipher: &mut PasswordCipher,
+) -> Result<DecryptChunkResult, StatusCode> {
     let encrypted_chunk_sz = PASSWORD_CIPHER_CHUNK_SZ + ENCRYPTED_TAG_SZ;
     let offset = (cipher.counter as usize) * encrypted_chunk_sz;
     let mut encrypted_chunk = EMPTY_PASSWORD_ENCRYPTED_CHUNK;
@@ -178,14 +188,14 @@ pub fn password_decrypt_next(data: &[u8], cipher: &mut PasswordCipher) -> Decryp
         key: cipher.key,
         nonce: cipher.nonce,
         counter: cipher.counter,
-        n_bytes: to_unencrypted_byte_size(data.len() as u64),
+        n_bytes: cipher.n_bytes,
         chunk_sz: cipher.chunk_sz,
     };
 
-    let result = password_decrypt_next_chunk(encrypted_chunk, cipher_val);
+    let result = password_decrypt_next_chunk(encrypted_chunk, cipher_val)?;
     cipher.counter = result.cipher.counter;
 
-    result
+    Ok(result)
 }
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>
 //

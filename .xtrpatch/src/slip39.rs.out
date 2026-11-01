@@ -1,4 +1,0 @@
-📄 src/slip39.rs                            ✅ SUCCESS (Δ-4 lines)
-   1. ✅ @ Remove obsolete struct de...   [Rep: 9, New: 0, Δ-9]
-   2. ✅ @ Implement from_slip39_mne...   [Rep: 5, New: 11, Δ+6]
-   3. ✅ @ Remove secret_sz paramete...   [Rep: 9, New: 8, Δ-1]
