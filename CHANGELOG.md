@@ -7,7 +7,7 @@ edit that file, then run `technoproj-changelog generate`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] - unreleased (prerelease)
+## [0.1.0] - 2026-11-01
 
 `v0.1.0`
 
@@ -33,3 +33,6 @@ schema that also generates the Python and TypeScript bindings.
 - Multi-recipient encryption and the struct-level canonical signing
   bytes guarantee are not built yet. Key material is not zeroized on
   drop.
+- The `--no-default-features` build still needs a global allocator,
+  pulled in by the `url` crate in OTP URI parsing, which is also most
+  of the OTP code size (#3).

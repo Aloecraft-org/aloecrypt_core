@@ -21,9 +21,12 @@ make check_ts                          # tsc --strict + stub-plugin test of the 
 ```
 
 `build.rs` reads `config/api_core.json` and `doc/api_core_docs.json`, merges
-them, and writes both `OUT_DIR/api_core.rs` and `.generated/api_core_merged.json`
-(which the Python and TypeScript generators read). There is no `jq` dependency
-and no preparatory `make` step. `doc/merge_docs.jq` is superseded and unused.
+them, and writes `api_core.rs` and `api_core_merged.json`, both to `OUT_DIR`
+only: a build script that writes into the source tree breaks `cargo package`
+and read-only checkouts. `make merge_docs` (which `lint` and `generate` run)
+copies the merged schema to `.generated/api_core_merged.json` with the
+`merge_schema` binary, for the Python and TypeScript generators. There is no
+`jq` dependency. `doc/merge_docs.jq` is superseded and unused.
 
 Before pushing, this is what CI runs:
 
@@ -110,6 +113,7 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
+| `src/bin/merge_schema.rs` | Copies the merged schema out of `OUT_DIR` for the generators |
 | `tests/` | 175 tests; external vectors where they exist |
 
 ## Testing conventions
