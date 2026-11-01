@@ -8,42 +8,35 @@ use ml_kem::{
 use super::kem_api::*;
 use super::rng_api::*;
 
-use crate::aloecrypt_api::{AloecryptAddress, AloecryptAddressable};
+use crate::aloecrypt_api::{AloecryptAddress, AloecryptAddressable, StatusCodeEnum};
+use crate::error::AloecryptResult;
 use crate::hash::domain_hash;
 
 impl MlKem512Keypair {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem512> {
-        EncapsulationKey::<MlKem512>::new(&self.public_key.into()).unwrap()
-    }
-
     fn _decapsulation_key(&self) -> DecapsulationKey<MlKem512> {
         DecapsulationKey::<MlKem512>::from_seed(self.private_seed.into())
     }
 }
 
 impl MlKem768Keypair {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem768> {
-        EncapsulationKey::<MlKem768>::new(&self.public_key.into()).unwrap()
-    }
-
     fn _decapsulation_key(&self) -> DecapsulationKey<MlKem768> {
         DecapsulationKey::<MlKem768>::from_seed(self.private_seed.into())
     }
 }
 
 impl MlKem1024Keypair {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem1024> {
-        EncapsulationKey::<MlKem1024>::new(&self.public_key.into()).unwrap()
-    }
-
     fn _decapsulation_key(&self) -> DecapsulationKey<MlKem1024> {
         DecapsulationKey::<MlKem1024>::from_seed(self.private_seed.into())
     }
 }
 
 impl MlKem512Encapsulator {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem512> {
-        EncapsulationKey::<MlKem512>::new(&self.public_key.into()).unwrap()
+    // The FIPS 203 encapsulation-key check runs on every use, not once at
+    // construction: the struct's fields are public and it unpacks from raw
+    // bytes, so no constructor can vouch for the key it holds.
+    fn _encapsulation_key(&self) -> AloecryptResult<EncapsulationKey<MlKem512>> {
+        EncapsulationKey::<MlKem512>::new(&self.public_key.into())
+            .map_err(|_| StatusCodeEnum::BadEncoding.into())
     }
 
     pub fn from_public_key(public_key: &MlKem512Pubkey) -> Self {
@@ -52,18 +45,23 @@ impl MlKem512Encapsulator {
         }
     }
 
-    /// `from_public_key` for bytes that came from outside: `None` unless they
-    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
-    /// result can never reach the panic a malformed key would cause.
-    pub fn try_from_public_key(public_key: &MlKem512Pubkey) -> Option<Self> {
-        EncapsulationKey::<MlKem512>::new(&(*public_key).into()).ok()?;
-        Some(Self::from_public_key(public_key))
+    /// `from_public_key` for bytes that came from outside: `BadEncoding`
+    /// unless they pass FIPS 203's encapsulation-key check, so a malformed
+    /// key is refused where it enters rather than at `encapsulate`.
+    pub fn try_from_public_key(public_key: &MlKem512Pubkey) -> AloecryptResult<Self> {
+        let encapsulator = Self::from_public_key(public_key);
+        encapsulator._encapsulation_key()?;
+        Ok(encapsulator)
     }
 }
 
 impl MlKem768Encapsulator {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem768> {
-        EncapsulationKey::<MlKem768>::new(&self.public_key.into()).unwrap()
+    // The FIPS 203 encapsulation-key check runs on every use, not once at
+    // construction: the struct's fields are public and it unpacks from raw
+    // bytes, so no constructor can vouch for the key it holds.
+    fn _encapsulation_key(&self) -> AloecryptResult<EncapsulationKey<MlKem768>> {
+        EncapsulationKey::<MlKem768>::new(&self.public_key.into())
+            .map_err(|_| StatusCodeEnum::BadEncoding.into())
     }
     pub fn from_public_key(public_key: &MlKem768Pubkey) -> Self {
         MlKem768Encapsulator {
@@ -71,18 +69,23 @@ impl MlKem768Encapsulator {
         }
     }
 
-    /// `from_public_key` for bytes that came from outside: `None` unless they
-    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
-    /// result can never reach the panic a malformed key would cause.
-    pub fn try_from_public_key(public_key: &MlKem768Pubkey) -> Option<Self> {
-        EncapsulationKey::<MlKem768>::new(&(*public_key).into()).ok()?;
-        Some(Self::from_public_key(public_key))
+    /// `from_public_key` for bytes that came from outside: `BadEncoding`
+    /// unless they pass FIPS 203's encapsulation-key check, so a malformed
+    /// key is refused where it enters rather than at `encapsulate`.
+    pub fn try_from_public_key(public_key: &MlKem768Pubkey) -> AloecryptResult<Self> {
+        let encapsulator = Self::from_public_key(public_key);
+        encapsulator._encapsulation_key()?;
+        Ok(encapsulator)
     }
 }
 
 impl MlKem1024Encapsulator {
-    fn _encapsulation_key(&self) -> EncapsulationKey<MlKem1024> {
-        EncapsulationKey::<MlKem1024>::new(&self.public_key.into()).unwrap()
+    // The FIPS 203 encapsulation-key check runs on every use, not once at
+    // construction: the struct's fields are public and it unpacks from raw
+    // bytes, so no constructor can vouch for the key it holds.
+    fn _encapsulation_key(&self) -> AloecryptResult<EncapsulationKey<MlKem1024>> {
+        EncapsulationKey::<MlKem1024>::new(&self.public_key.into())
+            .map_err(|_| StatusCodeEnum::BadEncoding.into())
     }
     pub fn from_public_key(public_key: &MlKem1024Pubkey) -> Self {
         MlKem1024Encapsulator {
@@ -90,12 +93,13 @@ impl MlKem1024Encapsulator {
         }
     }
 
-    /// `from_public_key` for bytes that came from outside: `None` unless they
-    /// pass FIPS 203's encapsulation-key check, so `encapsulate` on the
-    /// result can never reach the panic a malformed key would cause.
-    pub fn try_from_public_key(public_key: &MlKem1024Pubkey) -> Option<Self> {
-        EncapsulationKey::<MlKem1024>::new(&(*public_key).into()).ok()?;
-        Some(Self::from_public_key(public_key))
+    /// `from_public_key` for bytes that came from outside: `BadEncoding`
+    /// unless they pass FIPS 203's encapsulation-key check, so a malformed
+    /// key is refused where it enters rather than at `encapsulate`.
+    pub fn try_from_public_key(public_key: &MlKem1024Pubkey) -> AloecryptResult<Self> {
+        let encapsulator = Self::from_public_key(public_key);
+        encapsulator._encapsulation_key()?;
+        Ok(encapsulator)
     }
 }
 
@@ -211,13 +215,14 @@ impl IMlKem512Encapsulator for MlKem512Encapsulator {
     fn address(&self) -> AloecryptAddress {
         domain_hash(self.addressing_material(), MLKEM_512_ADDRESS_DOMAIN)
     }
-    fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem512EncapsulatorResult {
+    fn encapsulate(&self, prk: MlKemPrkSeed) -> AloecryptResult<MlKem512EncapsulatorResult> {
+        let key = self._encapsulation_key()?;
         let mut rng = AloeRng::new(prk);
-        let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);
-        MlKem512EncapsulatorResult {
+        let (cipher, secret) = key.encapsulate_with_rng(&mut rng);
+        Ok(MlKem512EncapsulatorResult {
             cipher: cipher.into(),
             secret: secret.into(),
-        }
+        })
     }
 }
 
@@ -225,13 +230,14 @@ impl IMlKem768Encapsulator for MlKem768Encapsulator {
     fn address(&self) -> AloecryptAddress {
         domain_hash(self.addressing_material(), MLKEM_768_ADDRESS_DOMAIN)
     }
-    fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem768EncapsulatorResult {
+    fn encapsulate(&self, prk: MlKemPrkSeed) -> AloecryptResult<MlKem768EncapsulatorResult> {
+        let key = self._encapsulation_key()?;
         let mut rng = AloeRng::new(prk);
-        let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);
-        MlKem768EncapsulatorResult {
+        let (cipher, secret) = key.encapsulate_with_rng(&mut rng);
+        Ok(MlKem768EncapsulatorResult {
             cipher: cipher.into(),
             secret: secret.into(),
-        }
+        })
     }
 }
 
@@ -239,13 +245,14 @@ impl IMlKem1024Encapsulator for MlKem1024Encapsulator {
     fn address(&self) -> AloecryptAddress {
         domain_hash(self.addressing_material(), MLKEM_1024_ADDRESS_DOMAIN)
     }
-    fn encapsulate(&self, prk: MlKemPrkSeed) -> MlKem1024EncapsulatorResult {
+    fn encapsulate(&self, prk: MlKemPrkSeed) -> AloecryptResult<MlKem1024EncapsulatorResult> {
+        let key = self._encapsulation_key()?;
         let mut rng = AloeRng::new(prk);
-        let (cipher, secret) = self._encapsulation_key().encapsulate_with_rng(&mut rng);
-        MlKem1024EncapsulatorResult {
+        let (cipher, secret) = key.encapsulate_with_rng(&mut rng);
+        Ok(MlKem1024EncapsulatorResult {
             cipher: cipher.into(),
             secret: secret.into(),
-        }
+        })
     }
 }
 // Copyright Michael Godfrey 2026 | aloecraft.org <michael@aloecraft.org>

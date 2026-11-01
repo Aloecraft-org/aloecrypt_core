@@ -721,6 +721,15 @@ section format doesn't prejudge it: several KemCipher sections already
 parse, and wrapping can arrive as a longer recipient-block layout under a
 new algorithm id or a critical section. Known gap, deliberate.
 
+**A malformed recipient key is `BadEncoding`, not a panic.** `encapsulate`
+is fallible in the schema and runs FIPS 203's encapsulation-key check on
+every call, so `encrypt_to_recipient_*`, `RecoverableSecret::create` and the
+flat `mlkem__*__encapsulate` wrappers all return the status. The check sits
+in `encapsulate` rather than only in a constructor because an encapsulator's
+fields are public and it unpacks from raw bytes: no constructor can vouch
+for the key it holds. A consumer handing the library a key from a guest
+program needs no copy of the check of its own.
+
 **Encapsulators gained addresses** the same way verifiers did (section
 19): `AloecryptAddressable` plus per-algorithm domains
 (`aloecrypt.address.mlkem512.v1`, …), `address()` on the encapsulator
@@ -753,10 +762,9 @@ only moves one intact.
 **The reader refuses everything it can as `BadEncoding`**: an algorithm
 other than the one asked for, a wrong key length, an address mismatch, a
 second PublicKey section ("the key in this document" must be unambiguous),
-and an ML-KEM key failing FIPS 203's encapsulation-key check. The last
-matters: `encapsulate` panics on such a key, so foreign bytes reach an
-encapsulator only through `try_from_public_key`. ML-DSA public keys have
-no invalid encodings, so they need no equivalent. An unknown critical
+and an ML-KEM key failing FIPS 203's encapsulation-key check, which
+`try_from_public_key` applies at the point of entry. ML-DSA public keys
+have no invalid encodings, so they need no equivalent. An unknown critical
 section is `Unsupported`, as everywhere else.
 
 Pinned armored fixtures (`tests/fixtures/signer_44.asc`,

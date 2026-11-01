@@ -1736,6 +1736,7 @@
             "name": "encapsulate",
             "instance": "&self",
             "return": "MlKem512EncapsulatorResult",
+            "fallible": "true",
             "params": [
               {
                 "name": "prk",
@@ -1759,6 +1760,7 @@
             "name": "encapsulate",
             "instance": "&self",
             "return": "MlKem768EncapsulatorResult",
+            "fallible": "true",
             "params": [
               {
                 "name": "prk",
@@ -1782,6 +1784,7 @@
             "name": "encapsulate",
             "instance": "&self",
             "return": "MlKem1024EncapsulatorResult",
+            "fallible": "true",
             "params": [
               {
                 "name": "prk",
@@ -2341,6 +2344,7 @@
           {
             "name": "create",
             "return": "Self",
+            "fallible": "true",
             "params": [
               {
                 "name": "authorizer",

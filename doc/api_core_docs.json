@@ -688,7 +688,7 @@
                 "name": "IMlKem512Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-512. Used by the initiating party to establish a shared secret with the holder of an ML-KEM-512 keypair.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]},
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's public key and a caller-supplied PRK seed. Returns both the shared secret (kept locally) and a ciphertext (sent to the recipient). The same PRK seed always produces the same output given the same public key; use a fresh CSPRNG-derived seed per session. Returns BadEncoding, never a panic, if the public key fails FIPS 203's encapsulation-key check.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG, used to deterministically derive the shared secret and ciphertext."}]},
                     {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-512-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
@@ -696,7 +696,7 @@
                 "name": "IMlKem768Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-768.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-768 public key and a PRK seed. Returns the shared secret and ciphertext, or BadEncoding if the public key fails FIPS 203's encapsulation-key check.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
                     {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-768-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
@@ -704,7 +704,7 @@
                 "name": "IMlKem1024Encapsulator",
                 "description": "Encapsulation interface for ML-KEM-1024.",
                 "functions": [
-                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
+                    {"name": "encapsulate", "description": "Encapsulates a fresh shared secret using the recipient's ML-KEM-1024 public key and a PRK seed. Returns the shared secret and ciphertext, or BadEncoding if the public key fails FIPS 203's encapsulation-key check.", "params": [{"name": "prk", "description": "A 32-byte pseudorandom key seed from a CSPRNG."}]},
                     {"name": "address", "description": "The 32-byte aloecrypt address of this public key: the domain-separated hash of its encoded bytes under an ML-KEM-1024-specific domain string. Stable for the key's lifetime, safe to publish, and what encrypted documents carry to name their recipient."}
                 ]
             },
@@ -950,7 +950,7 @@
                 "functions": [
                     {
                         "name": "create",
-                        "description": "Generates a new recoverable secret bound to the given authorizer. Internally generates a fresh KEM PRK seed and recoverer private key, encapsulates against the authorizer's public key, and derives the secret via H(kem_secret || recovery_private_key). The authorizer learns nothing at creation time.",
+                        "description": "Generates a new recoverable secret bound to the given authorizer. Internally generates a fresh KEM PRK seed and recoverer private key, encapsulates against the authorizer's public key, and derives the secret via H(kem_secret || recovery_private_key). The authorizer learns nothing at creation time. Returns BadEncoding if the authorizer's public key fails FIPS 203's encapsulation-key check.",
                         "params": [
                             {"name": "authorizer",      "description": "The authorizer's ML-KEM-512 encapsulator (public key wrapper). Only the public key is required; the authorizer's private key is not involved in secret creation."},
                             {"name": "recovery_secret", "description": "A pre generated 32-byte secret to use for the recovery key secret"},

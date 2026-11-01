@@ -298,7 +298,10 @@ fn a_malformed_kem_key_is_refused_even_with_its_own_address() {
     // only the key check stands between this document and a panic in
     // encapsulate.
     let bad_key = [0xFFu8; MLKEM_768_ENCAP_KEY_SZ];
-    assert!(MlKem768Encapsulator::try_from_public_key(&bad_key).is_none());
+    assert_eq!(
+        MlKem768Encapsulator::try_from_public_key(&bad_key).err(),
+        Some(code(StatusCodeEnum::BadEncoding))
+    );
     let unchecked = MlKem768Encapsulator::from_public_key(&bad_key);
     let mut doc = vec![0u8; public_key_document_size(MLKEM_768_ENCAP_KEY_SZ)];
     write_recipient_768(&unchecked, &mut doc).unwrap();

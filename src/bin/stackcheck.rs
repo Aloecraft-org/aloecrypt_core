@@ -102,7 +102,7 @@ fn run_op(op: &str) {
             let kem_seed = [9u8; 64];
             let prk = [9u8; MLKEM_PRK_SEED_SZ];
             let kp = MlKem768Keypair::from_seed(&kem_seed);
-            let result = kp.get_encapsulator().encapsulate(prk);
+            let result = kp.get_encapsulator().encapsulate(prk).unwrap();
             let shared = kp.decapsulate(&result.cipher);
             assert_eq!(shared, result.secret, "kem768 secrets disagree");
         }

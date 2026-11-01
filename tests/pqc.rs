@@ -103,7 +103,7 @@ dsa_suite!(dsa87, MlDsa87Keypair);
 // ------------------------------------------------------------------- ML-KEM
 
 macro_rules! kem_suite {
-    ($modname:ident, $kp:ident) => {
+    ($modname:ident, $kp:ident, $enc:ident) => {
         mod $modname {
             use super::*;
 
@@ -126,7 +126,7 @@ macro_rules! kem_suite {
             #[test]
             fn encapsulate_decapsulate_agree() {
                 let kp = $kp::from_seed(&kem_seed(1));
-                let result = kp.get_encapsulator().encapsulate(prk(1));
+                let result = kp.get_encapsulator().encapsulate(prk(1)).unwrap();
                 assert_eq!(
                     kp.decapsulate(&result.cipher),
                     result.secret,
@@ -153,7 +153,7 @@ macro_rules! kem_suite {
             fn a_different_keypair_does_not_recover_the_secret() {
                 let kp = $kp::from_seed(&kem_seed(4));
                 let other = $kp::from_seed(&kem_seed(5));
-                let result = kp.get_encapsulator().encapsulate(prk(4));
+                let result = kp.get_encapsulator().encapsulate(prk(4)).unwrap();
                 assert_ne!(
                     other.decapsulate(&result.cipher),
                     result.secret,
@@ -164,21 +164,40 @@ macro_rules! kem_suite {
             #[test]
             fn distinct_prk_seeds_give_distinct_secrets() {
                 let kp = $kp::from_seed(&kem_seed(6));
-                let a = kp.get_encapsulator().encapsulate(prk(6));
-                let b = kp.get_encapsulator().encapsulate(prk(7));
+                let a = kp.get_encapsulator().encapsulate(prk(6)).unwrap();
+                let b = kp.get_encapsulator().encapsulate(prk(7)).unwrap();
                 assert_ne!(a.secret, b.secret, "encapsulation ignored the prk seed");
                 assert_ne!(
                     a.cipher, b.cipher,
                     "encapsulation produced the same ciphertext"
                 );
             }
+
+            // FIPS 203 rejects an encapsulation key with any coefficient not
+            // reduced mod q (3329). One such coefficient in an otherwise
+            // honest key must surface as BadEncoding, never as a panic.
+            #[test]
+            fn a_key_with_one_unreduced_coefficient_is_bad_encoding() {
+                let mut public_key = $kp::from_seed(&kem_seed(8)).public_key;
+                public_key[0] = 0xFF;
+                public_key[1] |= 0x0F;
+                let bad = $enc::from_public_key(&public_key);
+                assert_eq!(
+                    bad.encapsulate(prk(8)).err(),
+                    Some(StatusCodeEnum::BadEncoding.into())
+                );
+                assert_eq!(
+                    $enc::try_from_public_key(&public_key).err(),
+                    Some(StatusCodeEnum::BadEncoding.into())
+                );
+            }
         }
     };
 }
 
-kem_suite!(kem512, MlKem512Keypair);
-kem_suite!(kem768, MlKem768Keypair);
-kem_suite!(kem1024, MlKem1024Keypair);
+kem_suite!(kem512, MlKem512Keypair, MlKem512Encapsulator);
+kem_suite!(kem768, MlKem768Keypair, MlKem768Encapsulator);
+kem_suite!(kem1024, MlKem1024Keypair, MlKem1024Encapsulator);
 
 // ------------------------------------------------------------------ recovery
 
@@ -200,7 +219,8 @@ fn recoverable_secret_roundtrips_through_the_authorizer() {
         prk_seed,
         ikm,
         domain,
-    );
+    )
+    .unwrap();
     let recovery_key = recoverable.recovery_key;
 
     let authorization = authorize_recovery(
@@ -237,7 +257,8 @@ fn a_wrong_mac_is_refused_with_auth_failed() {
         prk_seed,
         ikm,
         domain,
-    );
+    )
+    .unwrap();
     let recovery_key = recoverable.recovery_key;
 
     let mut tampered_mac = recovery_key.mac;
@@ -266,5 +287,21 @@ fn a_wrong_mac_is_refused_with_auth_failed() {
         ),
         Err(StatusCodeEnum::AuthFailed.into()),
         "a wrong domain must refuse authorization with the same code"
+    );
+}
+
+#[test]
+fn a_malformed_authorizer_key_is_refused_with_bad_encoding() {
+    let authorizer = MlKem512Encapsulator::from_public_key(&[0xFFu8; MLKEM_512_ENCAP_KEY_SZ]);
+    assert_eq!(
+        RecoverableSecret::create(
+            authorizer,
+            [7u8; RECOVERY_PRIVKEY_SZ],
+            [11u8; MLKEM_PRK_SEED_SZ],
+            b"recovery input keying material",
+            "aloecrypt.test.recovery",
+        )
+        .err(),
+        Some(StatusCodeEnum::BadEncoding.into())
     );
 }

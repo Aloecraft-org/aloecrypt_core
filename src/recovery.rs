@@ -11,8 +11,8 @@ impl IRecoverableSecret for RecoverableSecret {
         prk_seed: MlKemPrkSeed,
         ikm: &[u8],
         domain_info: &str,
-    ) -> Self {
-        let authorization = authorizer.encapsulate(prk_seed);
+    ) -> Result<Self, StatusCode> {
+        let authorization = authorizer.encapsulate(prk_seed)?;
         let mac = domain_hmac(ikm, domain_info);
         let recovery_key = RecoveryKey {
             cipher: authorization.cipher,
@@ -22,10 +22,10 @@ impl IRecoverableSecret for RecoverableSecret {
         let mut inner_secret_ikm = authorization.secret.to_vec();
         inner_secret_ikm.extend_from_slice(&recovery_key.secret);
         let secret = simple_hash(&inner_secret_ikm);
-        RecoverableSecret {
+        Ok(RecoverableSecret {
             secret,
             recovery_key,
-        }
+        })
     }
     fn recover(authorization: MlKemSecret, recovery_secret: &RecoverySecret) -> RecoverySecret {
         let mut recovery_secret_ikm = authorization.to_vec();

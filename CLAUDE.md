@@ -12,7 +12,7 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 169 tests
+cargo test                             # 175 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard (also run --no-default-features)
 make lint                              # schema validation (run before generating)
@@ -110,7 +110,7 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/` | Hand-written implementations of the generated traits |
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
-| `tests/` | 169 tests; external vectors where they exist |
+| `tests/` | 175 tests; external vectors where they exist |
 
 ## Testing conventions
 

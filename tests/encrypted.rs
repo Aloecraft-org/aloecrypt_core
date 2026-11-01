@@ -277,3 +277,29 @@ fn unknown_sections_do_not_disturb_decryption_but_critical_ones_refuse() {
         Err(code(StatusCodeEnum::Unsupported))
     );
 }
+
+// ------------------------------------------------------------ foreign keys
+
+// A recipient key from outside (a guest program, a kv store) that fails
+// FIPS 203's encapsulation-key check is a status code, not a panic: under
+// `panic = "abort"` one bad key would otherwise end the process.
+#[test]
+fn a_malformed_recipient_key_is_bad_encoding() {
+    let bad = Some(code(StatusCodeEnum::BadEncoding));
+    let mut out = vec![0u8; encrypted_document_size(MLKEM_1024_CIPHER_SZ, PAYLOAD.len())];
+    let r512 = MlKem512Encapsulator::from_public_key(&[0xFF; MLKEM_512_ENCAP_KEY_SZ]);
+    assert_eq!(
+        encrypt_to_recipient_512(&r512, PRK, PAYLOAD, &mut out).err(),
+        bad
+    );
+    let r768 = MlKem768Encapsulator::from_public_key(&[0xFF; MLKEM_768_ENCAP_KEY_SZ]);
+    assert_eq!(
+        encrypt_to_recipient_768(&r768, PRK, PAYLOAD, &mut out).err(),
+        bad
+    );
+    let r1024 = MlKem1024Encapsulator::from_public_key(&[0xFF; MLKEM_1024_ENCAP_KEY_SZ]);
+    assert_eq!(
+        encrypt_to_recipient_1024(&r1024, PRK, PAYLOAD, &mut out).err(),
+        bad
+    );
+}
