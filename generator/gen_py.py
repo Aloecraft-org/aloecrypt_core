@@ -59,7 +59,7 @@ def py_map_type(canonical: str) -> str:
 
 
 def py_map_return(canonical: str, struct_context: str | None) -> str:
-    if canonical == "Self":
+    if strip_ref(canonical.strip()) == "Self":
         return struct_context if struct_context else "Self"
     return py_map_type(canonical)
 

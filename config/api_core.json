@@ -2656,7 +2656,8 @@
                 "type": "&[u8]"
               }
             ],
-            "return": "&Self"
+            "return": "&Self",
+            "fallible": "true"
           },
           {
             "name": "with_algorithm",
@@ -2678,7 +2679,8 @@
                 "type": "&str"
               }
             ],
-            "return": "&Self"
+            "return": "&Self",
+            "fallible": "true"
           },
           {
             "name": "with_account_name",
@@ -2689,7 +2691,8 @@
                 "type": "&str"
               }
             ],
-            "return": "&Self"
+            "return": "&Self",
+            "fallible": "true"
           },
           {
             "name": "with_label",
@@ -2700,7 +2703,8 @@
                 "type": "&str"
               }
             ],
-            "return": "&Self"
+            "return": "&Self",
+            "fallible": "true"
           }
         ],
         "deprecated_functions": [
