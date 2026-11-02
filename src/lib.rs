@@ -8,6 +8,10 @@
 // unchanged (verified against thumbv8m.main-none-eabihf and wasm32-wasip2).
 #![cfg_attr(not(test), no_main)]
 
+// The plugin feature's wire adapters build their replies in a Vec.
+#[cfg(feature = "plugin")]
+extern crate alloc;
+
 include!(concat!(env!("OUT_DIR"), "/api_core.rs"));
 
 // pub mod address;

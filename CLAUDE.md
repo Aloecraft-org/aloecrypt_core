@@ -18,6 +18,7 @@ cargo run --release --bin stackcheck   # stack budget guard (also run --no-defau
 make lint                              # schema validation (run before generating)
 make generate                          # Python and TypeScript bindings (needs pydantic)
 make check_ts                          # tsc --strict + stub-plugin test of the TS bindings
+make check_plugin                      # build the extism .wasm, drive it through the Python bindings (needs extism)
 ```
 
 `build.rs` reads `config/api_core.json` and `doc/api_core_docs.json`, merges
@@ -95,6 +96,15 @@ Codes are coarse on purpose — wrong key and altered ciphertext share
 `AuthFailed` deliberately, so do not split codes. `src/error.rs` re-exports the
 generated type and defines `AloecryptResult<T>` (DESIGN section 16).
 
+**The plugin's exports are generated, not written.** `build.rs` emits one
+`fn(&[u8]) -> Vec<u8>` adapter per export into `OUT_DIR/plugin_exports.rs`,
+resolving the schema the way `generator/meta.py` and `wire.py` do, so the
+plugin answers exactly the names and packing the bindings use.
+`generator/check_plugin.py` asserts every binding export exists in the built
+`.wasm`. A malformed request is answered `BadEncoding` with no payload, even
+from an infallible export. The `plugin` feature needs an allocator and is
+off by default; only `plugin/` turns it on.
+
 **Stack is the binding constraint, not heap.** The downstream target has 520 KB
 of SRAM total and ML-DSA-65 wants ~274 KB of stack. Moving allocations to a heap
 does not help — it is the same bytes at a different address, plus
@@ -114,6 +124,8 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/bin/align.rs` | Integration smoke test |
 | `src/bin/stackcheck.rs` | Stack high-water guard |
 | `src/bin/merge_schema.rs` | Copies the merged schema out of `OUT_DIR` for the generators |
+| `src/plugin/wire.rs` | Wire decode/encode behind the `plugin` feature; build.rs generates one adapter per export |
+| `plugin/` | `aloecrypt_plugin`: the cdylib that wraps each adapter as an extism export |
 | `tests/` | 175 tests; external vectors where they exist |
 
 ## Testing conventions

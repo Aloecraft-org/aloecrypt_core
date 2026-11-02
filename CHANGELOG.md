@@ -7,6 +7,24 @@ edit that file, then run `technoproj-changelog generate`.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - unreleased
+
+`v0.2.0`
+
+An extism plugin, so the generated Python and TypeScript bindings have
+something to call. Each export is generated from the schema alongside
+the bindings, and the release ships the .wasm next to them.
+
+### Added
+
+- The `aloecrypt_plugin` crate (`plugin/`) and the `plugin` feature it
+  enables: one extism export per binding call, built for
+  wasm32-wasip1 and shipped as `aloecrypt_core_plugin_wasi.wasm`. A
+  malformed request is answered `BadEncoding` with no payload.
+- `MlDsa44Verifier` and `MlDsa87Verifier` now expose `verify` to the
+  bindings; only the 65 verifier did before.
+
+
 ## [0.1.0] - 2026-11-01
 
 `v0.1.0`

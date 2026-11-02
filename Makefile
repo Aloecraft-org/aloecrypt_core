@@ -32,6 +32,18 @@ check_ts: generate
 	@mv .generated/gen_ts/out/aloecrypt_core.js .generated/gen_ts/out/aloecrypt_core.mjs
 	@node ./generator/check_ts.mjs .generated/gen_ts/out/aloecrypt_core.mjs
 
+# The extism plugin the generated bindings load (plugin/), and the end-to-end
+# check that drives it through the real Python bindings (needs `pip install
+# extism`).
+PLUGIN_WASM:=target/wasm32-wasip1/release/aloecrypt_plugin.wasm
+
+.PHONY: plugin check_plugin
+plugin:
+	@cargo build --release -p aloecrypt_plugin --target wasm32-wasip1
+
+check_plugin: generate plugin
+	@python3 ./generator/check_plugin.py $(PLUGIN_WASM)
+
 build:
 	@cargo build --profile release
 

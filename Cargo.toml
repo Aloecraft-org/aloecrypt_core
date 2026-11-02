@@ -1,6 +1,6 @@
 [package]
 name = "aloecrypt_core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Michael Godfrey", "aloecraft.org"]
@@ -10,6 +10,11 @@ description = """
 """
 keywords = ["crypto"]
 categories = [ "cryptography", "no-std" ]
+
+# The plugin crate is a member so it shares the lockfile and the release
+# profile; `cargo build` and `cargo test` here still act on aloecrypt_core only.
+[workspace]
+members = [".", "plugin"]
 
 [features]
 default = ["slip39_words", "bip39_words", "host_rng", "host_kdf"]
@@ -25,6 +30,10 @@ host_rng = ["dep:getrandom"]
 # cost drops to a fixed block that lives on the stack, sized for the embedded
 # target. The interface is identical either way -- see src/pkdf.rs.
 host_kdf = ["argon2/alloc"]
+# The wire-format adapter behind each extism plugin export (src/plugin/). Needs
+# an allocator; the aloecrypt_plugin crate in plugin/ enables it and builds the
+# .wasm. Off by default, so no target pays for it.
+plugin = []
 
 # Argon2id in an unoptimized build is slow enough to dominate the test suite,
 # and there is nothing of ours to debug inside it. Optimize just the KDF and

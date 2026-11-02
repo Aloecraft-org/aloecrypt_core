@@ -1,0 +1,19 @@
+[package]
+name = "aloecrypt_plugin"
+version = "0.2.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Michael Godfrey", "aloecraft.org"]
+repository = "https://github.com/Aloecraft-org/aloecrypt_core"
+description = "aloecrypt_core as an extism plugin: the .wasm the generated Python and TypeScript bindings load."
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# No host_rng: the plugin never draws entropy, callers pass seeds. host_kdf
+# keeps the 19 MiB Argon2id profile, so a password derives the same key here
+# as on any other host build.
+aloecrypt_core = { path = "..", default-features = false, features = ["plugin", "host_kdf", "bip39_words", "slip39_words"] }
+extism-pdk = { version = "1.4", default-features = false }
