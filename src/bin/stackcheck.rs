@@ -71,46 +71,81 @@ const BUDGET: &[(&str, usize, usize)] = &[
     PBKDF_BUDGET,
 ];
 
+/// One probe per operation. Each is its own #[inline(never)] frame so that
+/// `run_op`'s frame stays small and an operation is measured alone: inlined,
+/// every arm's locals share one frame, and the pbkdf probe paid for the
+/// ML-KEM keys the kem768 arm holds on the stack when ml-kem's `alloc` is off.
+const PROBES: &[(&str, fn())] = &[
+    ("dsa44", probe_dsa44),
+    ("dsa65", probe_dsa65),
+    ("dsa87", probe_dsa87),
+    ("pbkdf", probe_pbkdf),
+    ("kem768", probe_kem768),
+];
+
+const PROBE_SEED: [u8; MLDSA_SEED_SZ] = [7u8; MLDSA_SEED_SZ];
+const PROBE_MSG: &[u8] = b"aloecrypt stackcheck";
+
 fn run_op(op: &str) {
-    let seed = [7u8; MLDSA_SEED_SZ];
-    let msg = b"aloecrypt stackcheck";
-    match op {
-        "dsa44" => {
-            let kp = MlDsa44Keypair::from_seed(&seed);
-            let sig = kp.sign(msg);
-            assert!(kp.get_verifier().verify(msg, &sig), "dsa44 verify failed");
-        }
-        "dsa65" => {
-            let kp = MlDsa65Keypair::from_seed(&seed);
-            let sig = kp.sign(msg);
-            assert!(kp.get_verifier().verify(msg, &sig), "dsa65 verify failed");
-        }
-        "dsa87" => {
-            let kp = MlDsa87Keypair::from_seed(&seed);
-            let sig = kp.sign(msg);
-            assert!(kp.get_verifier().verify(msg, &sig), "dsa87 verify failed");
-        }
-        "pbkdf" => {
-            let key = pbkdf(
-                b"stackcheck password",
-                b"stackcheck salt",
-                PBKDF_DEFAULT_ITERS,
-            );
-            assert_ne!(key, EMPTY_PBKDF_KEY, "pbkdf produced an all-zero key");
-        }
-        "kem768" => {
-            let kem_seed = [9u8; 64];
-            let prk = [9u8; MLKEM_PRK_SEED_SZ];
-            let kp = MlKem768Keypair::from_seed(&kem_seed);
-            let result = kp.get_encapsulator().encapsulate(prk).unwrap();
-            let shared = kp.decapsulate(&result.cipher);
-            assert_eq!(shared, result.secret, "kem768 secrets disagree");
-        }
-        other => {
-            eprintln!("unknown operation: {}", other);
+    match PROBES.iter().find(|(name, _)| *name == op) {
+        Some((_, probe)) => probe(),
+        None => {
+            eprintln!("unknown operation: {}", op);
             std::process::exit(2);
         }
     }
+}
+
+// depth: the probes themselves
+
+#[inline(never)]
+fn probe_dsa44() {
+    let kp = MlDsa44Keypair::from_seed(&PROBE_SEED);
+    let sig = kp.sign(PROBE_MSG);
+    assert!(
+        kp.get_verifier().verify(PROBE_MSG, &sig),
+        "dsa44 verify failed"
+    );
+}
+
+#[inline(never)]
+fn probe_dsa65() {
+    let kp = MlDsa65Keypair::from_seed(&PROBE_SEED);
+    let sig = kp.sign(PROBE_MSG);
+    assert!(
+        kp.get_verifier().verify(PROBE_MSG, &sig),
+        "dsa65 verify failed"
+    );
+}
+
+#[inline(never)]
+fn probe_dsa87() {
+    let kp = MlDsa87Keypair::from_seed(&PROBE_SEED);
+    let sig = kp.sign(PROBE_MSG);
+    assert!(
+        kp.get_verifier().verify(PROBE_MSG, &sig),
+        "dsa87 verify failed"
+    );
+}
+
+#[inline(never)]
+fn probe_pbkdf() {
+    let key = pbkdf(
+        b"stackcheck password",
+        b"stackcheck salt",
+        PBKDF_DEFAULT_ITERS,
+    );
+    assert_ne!(key, EMPTY_PBKDF_KEY, "pbkdf produced an all-zero key");
+}
+
+#[inline(never)]
+fn probe_kem768() {
+    let kem_seed = [9u8; 64];
+    let prk = [9u8; MLKEM_PRK_SEED_SZ];
+    let kp = MlKem768Keypair::from_seed(&kem_seed);
+    let result = kp.get_encapsulator().encapsulate(prk).unwrap();
+    let shared = kp.decapsulate(&result.cipher);
+    assert_eq!(shared, result.secret, "kem768 secrets disagree");
 }
 
 /// Child mode: run one operation on a thread with an exact stack size.

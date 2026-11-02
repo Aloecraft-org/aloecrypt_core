@@ -491,3 +491,50 @@ fn overlong_multibyte_input_does_not_panic() {
     let t: OtpTypeEnum = c.otp_type.into();
     assert_eq!(t, OtpTypeEnum::UNKNOWN);
 }
+
+// The otpauth split replaced a general URL parser (issue #3). These pin the
+// cases where the two could differ: what a URL parser tolerated and otpauth
+// keeps, and the general URL syntax otpauth has no use for.
+#[test]
+fn test_uri_shape_without_a_url_parser() {
+    let secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    let valid = |s: &str| {
+        let c = OtpCredential::from_string(s);
+        let t: OtpTypeEnum = { c.otp_type }.into();
+        (!matches!(t, OtpTypeEnum::UNKNOWN), c)
+    };
+
+    // A fragment is ignored, as a URL parser drops it.
+    let (ok, c) = valid(&format!(
+        "otpauth://totp/Ex:al?secret={secret}&issuer=Ex#frag"
+    ));
+    assert!(ok);
+    assert_eq!(c.issuer.to_str(), "Ex");
+
+    // Tab, CR and LF inside the URI are dropped (WHATWG URL), so a URI
+    // wrapped across lines when copied still parses to the same credential.
+    let (ok, wrapped) = valid(&format!(
+        "otpauth://totp/Ex:al?secret=GEZDGNBV\n\tGY3TQOJQGEZDGNBVGY3TQOJQ"
+    ));
+    let (_, plain) = valid(&format!("otpauth://totp/Ex:al?secret={secret}"));
+    assert!(ok);
+    assert_eq!(wrapped.secret.to_byte_arr(), plain.secret.to_byte_arr());
+
+    // Unencoded spaces and UTF-8 in the label survive, percent-encoded or not.
+    let (ok, c) = valid(&format!("otpauth://totp/ACME Co:jos\u{e9}?secret={secret}"));
+    assert!(ok);
+    assert_eq!(c.issuer.to_str(), "ACME Co");
+    assert_eq!(c.account_name.to_str(), "jos\u{e9}");
+
+    // General URL syntax otpauth never uses is rejected rather than parsed:
+    // userinfo, a port, an empty type, dot segments.
+    for s in [
+        format!("otpauth://user@totp/x?secret={secret}"),
+        format!("otpauth://totp:80/x?secret={secret}"),
+        format!("otpauth:///x?secret={secret}"),
+        format!("otpauth://totp/a/../x?secret={secret}"),
+        format!("otpauth://totp?secret={secret}"),
+    ] {
+        assert!(!valid(&s).0, "accepted {s}");
+    }
+}

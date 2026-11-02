@@ -170,7 +170,10 @@ is present today and both are far cheaper to add before that layer exists than a
 
 Feature-gated profiles, so a consumer takes only what it needs:
 
-- **minimal** — `no_std`, no allocator, no wordlists. The floor.
+- **minimal** — `no_std`, no allocator, no wordlists. The floor. CI links
+  `guard/noalloc`, a cdylib with no global allocator, so anything that pulls
+  in `alloc` fails the build. Dependencies are taken with
+  `default-features = false` for this reason.
 - **wordlists** — BIP-39 / SLIP-39 mnemonics. Opt-in; the arithmetic underneath
   (GF(256), Reed–Solomon, share splitting) stays available without them.
 - **std** — host conveniences.

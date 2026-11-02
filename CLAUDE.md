@@ -12,7 +12,7 @@ place of GPG. Sessions, authenticators, aloelite and the RP2350 firmware are
 
 ```sh
 cargo build --lib                      # build.rs merges the schema itself; no prep step
-cargo test                             # 175 tests
+cargo test                             # 176 tests
 cargo run --release --bin align        # integration smoke test
 cargo run --release --bin stackcheck   # stack budget guard (also run --no-default-features)
 make lint                              # schema validation (run before generating)
@@ -54,7 +54,9 @@ crate. Legacy hash interop is allowed at the *edge*, chosen per use: `OtpAlgorit
 carrying SHA-1 for compatibility is the reference example.
 
 **Every feature must be switchable.** `--no-default-features` has to build, for
-every target. The wordlists are opt-in and the recovery arithmetic works without
+every target, and link with no allocator: take new dependencies with
+`default-features = false`, since most RustCrypto crates enable `alloc` by
+default, and `guard/noalloc` fails the cross job if one slips in. The wordlists are opt-in and the recovery arithmetic works without
 them. `host_rng` gates `getrandom`, which has no bare-metal backend — the
 library itself never needs entropy, since `AloeRng` is seeded by the caller.
 `host_kdf` gates the password KDF's memory cost: Argon2id at 19 MiB via the
@@ -126,7 +128,8 @@ nondeterminism. Only reducing peak *live* bytes moves the number.
 | `src/bin/merge_schema.rs` | Copies the merged schema out of `OUT_DIR` for the generators |
 | `src/plugin/wire.rs` | Wire decode/encode behind the `plugin` feature; build.rs generates one adapter per export |
 | `plugin/` | `aloecrypt_plugin`: the cdylib that wraps each adapter as an extism export |
-| `tests/` | 175 tests; external vectors where they exist |
+| `guard/noalloc/` | A cdylib with no global allocator; CI links it to keep the minimal profile allocator-free |
+| `tests/` | 176 tests; external vectors where they exist |
 
 ## Testing conventions
 

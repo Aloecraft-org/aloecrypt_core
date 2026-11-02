@@ -24,6 +24,22 @@ the bindings, and the release ships the .wasm next to them.
 - `MlDsa44Verifier` and `MlDsa87Verifier` now expose `verify` to the
   bindings; only the 65 verifier did before.
 
+### Changed
+
+- otpauth URIs are split by hand instead of by the `url` crate, which is
+  gone. That was most of the OTP code: an OTP-only build drops from
+  230 KB to 55 KB and the plugin from 507 KB to 294 KB. A URI with
+  userinfo, a port or `.`/`..` path segments is now rejected rather than
+  normalized; everything the old parser accepted otherwise parses to the
+  same credential.
+
+### Fixed
+
+- The `--no-default-features` build needed a global allocator, though
+  the minimal profile promises none. ml-kem, sha1, sha2, hmac and digest
+  enabled `alloc` through their default features, and recovery hashed
+  through a `Vec`. It now links with no allocator, and CI checks that.
+
 
 ## [0.1.0] - 2026-11-01
 

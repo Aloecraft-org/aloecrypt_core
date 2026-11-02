@@ -19,19 +19,27 @@ impl IRecoverableSecret for RecoverableSecret {
             mac: mac,
             secret: recovery_secret,
         };
-        let mut inner_secret_ikm = authorization.secret.to_vec();
-        inner_secret_ikm.extend_from_slice(&recovery_key.secret);
-        let secret = simple_hash(&inner_secret_ikm);
+        let secret = simple_hash(&concat_secrets(&authorization.secret, &recovery_key.secret));
         Ok(RecoverableSecret {
             secret,
             recovery_key,
         })
     }
     fn recover(authorization: MlKemSecret, recovery_secret: &RecoverySecret) -> RecoverySecret {
-        let mut recovery_secret_ikm = authorization.to_vec();
-        recovery_secret_ikm.extend_from_slice(recovery_secret);
-        simple_hash(&recovery_secret_ikm)
+        simple_hash(&concat_secrets(&authorization, recovery_secret))
     }
+}
+
+/// `authorization || recovery_secret`, on the stack: the hash input both
+/// `create` and `recover` derive the recoverable secret from.
+fn concat_secrets(
+    authorization: &MlKemSecret,
+    recovery_secret: &RecoverySecret,
+) -> [u8; MLKEM_SECRET_SZ + RECOVERY_PRIVKEY_SZ] {
+    let mut ikm = [0u8; MLKEM_SECRET_SZ + RECOVERY_PRIVKEY_SZ];
+    ikm[..MLKEM_SECRET_SZ].copy_from_slice(authorization);
+    ikm[MLKEM_SECRET_SZ..].copy_from_slice(recovery_secret);
+    ikm
 }
 
 /// Compare two MACs in constant time: fold the XOR of every byte pair into one
