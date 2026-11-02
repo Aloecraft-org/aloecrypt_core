@@ -1,0 +1,13 @@
+[package]
+name = "aloecrypt_noalloc_guard"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "CI guard: aloecrypt_core's minimal profile links with no global allocator."
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aloecrypt_core = { path = "../..", default-features = false, features = ["slip39_words", "bip39_words"] }

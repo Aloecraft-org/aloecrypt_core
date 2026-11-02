@@ -2,7 +2,6 @@ use super::otp_api::*;
 use super::*;
 
 use data_encoding::BASE32_NOPAD;
-use url::Url;
 
 // The hash types are used only as HMAC parameters, so the Digest traits
 // themselves are not needed in scope.
@@ -554,25 +553,54 @@ fn parse_shorthand(rest: &str, otp_type: OtpTypeEnum, raw: &str) -> OtpCredentia
     cred
 }
 
+/// Splits `otpauth://TYPE/LABEL?QUERY#FRAGMENT` into (TYPE, LABEL, QUERY),
+/// the label and query still percent-encoded. `uri` arrives with its scheme
+/// already lowercased by `from_string`. The fragment is discarded, as a URL
+/// parser would. Nothing else of general URL syntax applies to otpauth, so
+/// anything beyond this shape (userinfo, a port, an empty type) leaves the
+/// type unrecognized and the credential invalid.
+fn split_otpauth(uri: &str) -> Option<(&str, Option<&str>, &str)> {
+    let rest = uri.strip_prefix("otpauth://")?;
+    let rest = rest.split('#').next().unwrap_or("");
+    let (before_query, query) = match rest.find('?') {
+        Some(i) => (&rest[..i], &rest[i + 1..]),
+        None => (rest, ""),
+    };
+    let (authority, label) = match before_query.find('/') {
+        Some(i) => (&before_query[..i], Some(&before_query[i + 1..])),
+        None => (before_query, None),
+    };
+    Some((authority, label, query))
+}
+
 fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
-    let url = match Url::parse(uri_str) {
-        Ok(u) => u,
-        Err(_) => return OtpCredential::invalid("failed to parse URI", raw),
+    // A URL parser drops ASCII tab, CR and LF wherever they appear (WHATWG
+    // URL), so a URI wrapped across lines when copied still parses. Keep that.
+    let mut buf = [0u8; 256];
+    let mut len = 0;
+    for b in uri_str
+        .bytes()
+        .filter(|b| !matches!(b, b'\t' | b'\n' | b'\r'))
+    {
+        if len == buf.len() {
+            return OtpCredential::invalid("uri too long", raw);
+        }
+        buf[len] = b;
+        len += 1;
+    }
+    // Removing ASCII bytes cannot split a UTF-8 sequence.
+    let uri_str = core::str::from_utf8(&buf[..len]).unwrap_or("");
+    let Some((authority, raw_label, query_str)) = split_otpauth(uri_str) else {
+        return OtpCredential::invalid("invalid protocol string", raw);
     };
 
-    if url.scheme() != "otpauth" {
-        return OtpCredential::invalid("invalid protocol string", raw);
-    }
-
-    let otp_type = match url.host_str() {
-        Some("totp") => OtpTypeEnum::TOTP,
-        Some("hotp") => OtpTypeEnum::HOTP,
+    let otp_type = match authority {
+        "totp" => OtpTypeEnum::TOTP,
+        "hotp" => OtpTypeEnum::HOTP,
         _ => return OtpCredential::invalid("unknown otp type", raw),
     };
 
-    // Raw path from the url crate still has percent-encoding intact
-    let raw_path = url.path();
-    let raw_label = match raw_path.strip_prefix('/') {
+    let raw_label = match raw_label {
         Some(l) => l,
         None => return OtpCredential::invalid("missing label", raw),
     };
@@ -598,7 +626,6 @@ fn parse_full_uri(uri_str: &str, raw: &str) -> OtpCredential {
     let account_name = core::str::from_utf8(&account_buf[..account_len]).unwrap_or("");
 
     // Parse query parameters
-    let query_str = url.query().unwrap_or("");
     let mut secret_buf = [0u8; 255];
     let mut secret_len = 0usize;
     let mut has_secret = false;

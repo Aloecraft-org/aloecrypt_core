@@ -72,6 +72,11 @@ jobs:
         run: >
           cargo build --lib --target ${{ matrix.target }}
           --no-default-features --features slip39_words,bip39_words
+      # The minimal profile has no allocator (DESIGN section 6). A cdylib that
+      # declares none fails to link the moment anything pulls in `alloc`.
+      - name: links with no allocator
+        if: matrix.target == 'wasm32-unknown-unknown'
+        run: cargo build -p aloecrypt_noalloc_guard --release --target wasm32-unknown-unknown
 
   # The example binaries link std and seed from the host, so they are host-only.
   # align is the integration smoke test (see Makefile).
