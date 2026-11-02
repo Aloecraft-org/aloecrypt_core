@@ -37,6 +37,7 @@ check_ts: generate
 # extism`).
 PLUGIN_WASM:=target/wasm32-wasip1/release/aloecrypt_plugin.wasm
 
+.PHONY: plugin check_plugin
 plugin:
 	@cargo build --release -p aloecrypt_plugin --target wasm32-wasip1
 
