@@ -174,7 +174,9 @@ Feature-gated profiles, so a consumer takes only what it needs:
 - **wordlists** — BIP-39 / SLIP-39 mnemonics. Opt-in; the arithmetic underneath
   (GF(256), Reed–Solomon, share splitting) stays available without them.
 - **std** — host conveniences.
-- **plugin** — the extism wire format.
+- **plugin** — the extism wire adapters, generated from the schema; the
+  `aloecrypt_plugin` crate in `plugin/` builds them into the `.wasm` the
+  Python and TypeScript bindings load.
 
 Every profile must build in CI. A feature flag that cannot be turned off is not a
 feature flag.

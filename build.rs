@@ -779,6 +779,222 @@ fn read_json(path: &str) -> serde_json::Value {
     serde_json::from_str(&raw).expect(format!("failed to parse {}", path).as_str())
 }
 
+// depth: plugin export glue
+//
+// One wire-format adapter per export the Python and TypeScript bindings call,
+// mirroring generator/wire.py: the same export names, the same parameter
+// packing, the same 2-byte status prefix. Each adapter is a plain
+// `fn(&[u8]) -> Vec<u8>`, so the wire format is testable natively; the
+// aloecrypt_plugin crate wraps each one in an extism export. Included by
+// src/plugin/mod.rs behind the `plugin` feature.
+
+const PRIMITIVES: &[&str] = &[
+    "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "bool",
+];
+
+fn plugin_param(name: &str, ty: &str) -> (String, String) {
+    // Returns (decode statement, call argument).
+    let t = ty.trim();
+    match t {
+        "&[u8]" => (format!("let {name} = r.bytes()?;"), name.to_string()),
+        "&str" => (format!("let {name} = r.str()?;"), name.to_string()),
+        "&[u16]" => (format!("let {name} = r.u16s()?;"), format!("&{name}[..]")),
+        _ => {
+            let by_ref = t.starts_with('&');
+            let inner = t.trim_start_matches('&').trim();
+            if inner.starts_with("mut ") || inner.contains('[') || inner.contains('<') {
+                panic!("plugin glue: unsupported parameter type `{t}` for `{name}`");
+            }
+            let decode = if PRIMITIVES.contains(&inner) {
+                format!("let {name} = r.{inner}()?;")
+            } else {
+                format!("let {name}: {inner} = r.fixed()?;")
+            };
+            let arg = if by_ref {
+                format!("&{name}")
+            } else {
+                name.to_string()
+            };
+            (decode, arg)
+        }
+    }
+}
+
+fn plugin_encode(ret: Option<&str>) -> String {
+    let Some(r) = ret.map(str::trim) else {
+        return "{ let _ = ret; alloc::vec::Vec::new() }".to_string();
+    };
+    match r {
+        "bool" => "alloc::vec![ret as u8]".to_string(),
+        "&str" => "ret.as_bytes().to_vec()".to_string(),
+        "&[u8]" => "ret.to_vec()".to_string(),
+        "usize" => "(ret as u64).to_le_bytes().to_vec()".to_string(),
+        _ if PRIMITIVES.contains(&r) => "ret.to_le_bytes().to_vec()".to_string(),
+        _ if r.starts_with('&') => "wire::fixed_out(ret)".to_string(),
+        _ => "wire::fixed_out(&ret)".to_string(),
+    }
+}
+
+fn plugin_export(
+    out: &mut Vec<(String, String)>,
+    export: String,
+    target: String,
+    instance: Option<(&str, &str)>,
+    function: &serde_json::Value,
+) {
+    let mut body = String::new();
+    let mut args = Vec::new();
+    if let Some((recv, ty)) = instance {
+        let decl = if recv.contains("mut") {
+            "let mut"
+        } else {
+            "let"
+        };
+        body.push_str(&format!("        {decl} instance: {ty} = r.fixed()?;\n"));
+        args.push(
+            if recv.contains("mut") {
+                "&mut instance"
+            } else {
+                "&instance"
+            }
+            .to_string(),
+        );
+    }
+    for p in function["params"].as_array().into_iter().flatten() {
+        let name = p["name"].as_str().unwrap_or("").trim();
+        let ty = p["type"].as_str().unwrap_or("").trim();
+        if name.is_empty() && ty.is_empty() {
+            continue;
+        }
+        let (decode, arg) = plugin_param(name, ty);
+        body.push_str(&format!("        {decode}\n"));
+        args.push(arg);
+    }
+    body.push_str("        r.finish()?;\n");
+    let fallible = function.get("fallible").and_then(|f| f.as_str()) == Some("true");
+    let q = if fallible { "?" } else { "" };
+    body.push_str(&format!(
+        "        let ret = {target}({}){q};\n",
+        args.join(", ")
+    ));
+    let ret = function.get("return").and_then(|r| r.as_str());
+    body.push_str(&format!("        Ok({})\n", plugin_encode(ret)));
+    let src = format!(
+        "pub fn {export}(input: &[u8]) -> alloc::vec::Vec<u8> {{\n    wire::run(input, |r| {{\n{body}    }})\n}}\n"
+    );
+    out.push((export, src));
+}
+
+fn generate_plugin_exports(parsed: &serde_json::Value, outfile: PathBuf) {
+    let api = parsed.as_object().expect("schema root is not an object");
+
+    // Same resolution as generator/meta.py: traits and functions are keyed by
+    // name across all namespaces (a later definition replaces an earlier one),
+    // and an impl naming a missing trait or struct is skipped.
+    let mut traits: Vec<(String, String, serde_json::Value)> = Vec::new();
+    let mut functions: Vec<(String, String, serde_json::Value)> = Vec::new();
+    let mut structs = std::collections::HashMap::new();
+    for (ns, module) in api {
+        for t in module
+            .get("traits")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let name = t["name"].as_str().unwrap().to_string();
+            match traits.iter_mut().find(|(n, _, _)| *n == name) {
+                Some(slot) => *slot = (name, ns.clone(), t.clone()),
+                None => traits.push((name, ns.clone(), t.clone())),
+            }
+        }
+        for f in module
+            .get("functions")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let name = f["name"].as_str().unwrap().to_string();
+            match functions.iter_mut().find(|(n, _, _)| *n == name) {
+                Some(slot) => *slot = (name, ns.clone(), f.clone()),
+                None => functions.push((name, ns.clone(), f.clone())),
+            }
+        }
+        for s in module
+            .get("structs")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            structs.insert(s["name"].as_str().unwrap().to_string(), ns.clone());
+        }
+    }
+
+    let mut exports = Vec::new();
+    for (ns, module) in api {
+        for imp in module
+            .get("impls")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let (Some(tname), Some(sname)) = (imp["trait"].as_str(), imp["struct"].as_str()) else {
+                continue;
+            };
+            let Some((_, tns, trait_def)) = traits.iter().find(|(n, _, _)| n == tname) else {
+                continue;
+            };
+            let Some(sns) = structs.get(sname) else {
+                continue;
+            };
+            for f in trait_def["functions"].as_array().into_iter().flatten() {
+                let fname = f["name"].as_str().unwrap();
+                let export = format!("{ns}___{}__{fname}", sname.to_lowercase());
+                let target = format!("<crate::{sns}::{sname} as crate::{tns}::{tname}>::{fname}");
+                let instance = f
+                    .get("instance")
+                    .and_then(|i| i.as_str())
+                    .map(|i| (i, sname));
+                plugin_export(&mut exports, export, target, instance, f);
+            }
+        }
+    }
+    for (fname, ns, f) in &functions {
+        let module = NAMESPACE_MODULES
+            .iter()
+            .find(|(n, _)| n == ns)
+            .map(|(_, m)| *m)
+            .unwrap_or_else(|| ns.strip_suffix("_api").unwrap_or(ns));
+        let export = format!("{ns}___{fname}");
+        plugin_export(
+            &mut exports,
+            export,
+            format!("crate::{module}::{fname}"),
+            None,
+            f,
+        );
+    }
+
+    let mut out = String::new();
+    out.push_str("// Generated by build.rs (plugin export glue). Do not edit.\n\n");
+    for (_, src) in &exports {
+        out.push_str(src);
+        out.push('\n');
+    }
+    out.push_str("/// Every export, by the name the bindings call it.\n");
+    out.push_str("pub const EXPORTS: &[(&str, fn(&[u8]) -> alloc::vec::Vec<u8>)] = &[\n");
+    for (name, _) in &exports {
+        out.push_str(&format!("    (\"{name}\", {name}),\n"));
+    }
+    out.push_str("];\n\n");
+    out.push_str("/// Calls `$m!` once with every export name, for the plugin crate.\n");
+    out.push_str("#[macro_export]\nmacro_rules! for_each_plugin_export {\n    ($m:ident) => {\n        $m! {\n");
+    for (name, _) in &exports {
+        out.push_str(&format!("            {name},\n"));
+    }
+    out.push_str("        }\n    };\n}\n");
+    fs::write(&outfile, out).expect("failed to write plugin exports");
+}
+
 fn main() {
     const SRC: &str = "config/api_core.json";
     const DOCS: &str = "doc/api_core_docs.json";
@@ -802,4 +1018,5 @@ fn main() {
     .expect("failed to write merged schema");
 
     generate_api(&merged, Path::new(&out_dir).join("api_core.rs"));
+    generate_plugin_exports(&merged, Path::new(&out_dir).join("plugin_exports.rs"));
 }

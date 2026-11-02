@@ -1285,6 +1285,10 @@
       },
       {
         "trait": "IMlDsa44Verifier",
+        "struct": "MlDsa44Verifier"
+      },
+      {
+        "trait": "IMlDsa44Verifier",
         "struct": "MlDsa44Keypair"
       },
       {
@@ -1301,6 +1305,10 @@
       },
       {
         "trait": "IMlDsa87Pubkey",
+        "struct": "MlDsa87Verifier"
+      },
+      {
+        "trait": "IMlDsa87Verifier",
         "struct": "MlDsa87Verifier"
       },
       {

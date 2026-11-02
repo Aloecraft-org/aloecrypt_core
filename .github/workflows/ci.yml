@@ -264,6 +264,27 @@ jobs:
           print("wire status prefix: decode, raise, short-reply and truncated-Ok paths all pass")
           EOF
 
+  # The extism plugin: the wire adapters natively, then the built .wasm driven
+  # through the generated Python bindings with the real extism runtime.
+  plugin:
+    name: plugin / extism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+      - name: install generator deps
+        run: pip install pydantic extism
+      - name: wire adapters (native)
+        run: cargo test --features plugin --test plugin_wire
+      - name: build the plugin and drive it through the bindings
+        run: make check_plugin
+
   # The technoproj release standard: version.mk, the changelog and the
   # release workflow cannot drift off it. Pinned to the same engine as
   # release.yml.

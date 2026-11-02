@@ -34,6 +34,8 @@ src/
   pkdf.rs              Argon2id password key derivation
   otp.rs               HOTP/TOTP credentials and otpauth URIs
   plugin/pqc.rs        Flat seed-and-bytes ML-DSA/ML-KEM wrappers
+  plugin/wire.rs       Extism wire format (the `plugin` feature)
+plugin/                The extism plugin crate (aloecrypt_plugin.wasm)
   rng.rs               ChaCha20-based CSPRNG (AloeRng)
   hash.rs              Keccak-256 hash and HMAC
 src/bin/align.rs       Integration smoke test (requires std)
@@ -74,9 +76,29 @@ recovery arithmetic works without them), and `host_rng` pulls in `getrandom` for
 the example binaries. All are opt-out; `--no-default-features` builds for every
 supported target.
 
+## Extism plugin
+
+The Python and TypeScript bindings call an extism plugin. Build it, or take
+`aloecrypt_core_plugin_wasi.wasm` from a release:
+
+```sh
+make plugin    # target/wasm32-wasip1/release/aloecrypt_plugin.wasm
+```
+
+From Python, with `pip install extism` and the generated bindings:
+
+```python
+import aloecrypt_core as ac
+
+ac._Plugin.configure("aloecrypt_plugin.wasm")
+kp = ac.MlDsa65Keypair.from_seed(bytes(32))
+sig = kp.sign(b"hello")
+assert kp.get_verifier().verify(b"hello", sig)
+```
+
 ## Wire format
 
-All plugin calls use a packed binary wire format. Parameters are concatenated as little-endian bytes. Variable-length parameters (`&[u8]`, `&str`) are prefixed with a `u32` LE length. Instance methods prepend the serialized struct before the parameters. Return values are raw bytes.
+All plugin calls use a packed binary wire format. Parameters are concatenated as little-endian bytes. Variable-length parameters (`&[u8]`, `&str`) are prefixed with a `u32` LE length. Instance methods prepend the serialized struct before the parameters. Every reply starts with a 2-byte LE status code; the payload follows only when it is `Ok`.
 
 Export naming:
 - Instance/static trait methods: `{namespace}___{struct_lower}__{fn_name}`

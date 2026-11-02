@@ -55,8 +55,8 @@ jobs:
       publish: ${{ inputs.publish || false }}
       technoproj: v0.4.1
 
-  # The crate is a library, so a release ships its source package and the
-  # bindings generated from the schema. `cargo package` verifies by building
+  # The crate is a library, so a release ships its source package, the
+  # bindings generated from the schema, and the extism plugin they load. `cargo package` verifies by building
   # the packaged tree. The tests run here too, so a release is not a way
   # around them.
   build:
@@ -68,6 +68,8 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.sha }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -84,6 +86,12 @@ jobs:
           make generate
           cp .generated/gen_py/aloecrypt_core.py out/
           cp .generated/gen_ts/aloecrypt_core.ts out/
+      # The extism plugin the bindings load, checked through them before it ships.
+      - name: build and check the plugin
+        run: |
+          pip install extism
+          make check_plugin
+          cp target/wasm32-wasip1/release/aloecrypt_plugin.wasm out/aloecrypt_core_plugin_wasi.wasm
       - uses: actions/upload-artifact@v4
         with:
           name: dist-aloecrypt_core
